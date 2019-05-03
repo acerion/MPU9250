@@ -382,146 +382,146 @@ void setup()
 	delay(1000);
 #endif
 
-	if (c == 0x71) // WHO_AM_I should always be 0x68
-		{
-			Serial.println("MPU9250 is online...");
+	if (c == 0x71) { // WHO_AM_I should always be 0x68
+		Serial.println("MPU9250 is online...");
 
-			MPU9250SelfTest(SelfTest); // Start by performing self test and reporting values
-			Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
-			Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
-			Serial.print("z-axis self test: acceleration trim within : "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
-			Serial.print("x-axis self test: gyration trim within : "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
-			Serial.print("y-axis self test: gyration trim within : "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
-			Serial.print("z-axis self test: gyration trim within : "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
-			delay(1000);
+		MPU9250SelfTest(SelfTest); // Start by performing self test and reporting values
+		Serial.print("x-axis self test: acceleration trim within : "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
+		Serial.print("y-axis self test: acceleration trim within : "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
+		Serial.print("z-axis self test: acceleration trim within : "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
+		Serial.print("x-axis self test: gyration trim within : "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
+		Serial.print("y-axis self test: gyration trim within : "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
+		Serial.print("z-axis self test: gyration trim within : "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
+		delay(1000);
 
-			// get sensor resolutions, only need to do this once
-			getAres();
-			getGres();
-			getMres();
+		// get sensor resolutions, only need to do this once
+		getAres();
+		getGres();
+		getMres();
 
-			Serial.println(" Calibrate gyro and accel");
-			accelgyrocalMPU9250(gyroBias, accelBias); // Calibrate gyro and accelerometers, load biases in bias registers
-			Serial.println("accel biases (mg)"); Serial.println(1000.*accelBias[0]); Serial.println(1000.*accelBias[1]); Serial.println(1000.*accelBias[2]);
-			Serial.println("gyro biases (dps)"); Serial.println(gyroBias[0]); Serial.println(gyroBias[1]); Serial.println(gyroBias[2]);
+		Serial.println(" Calibrate gyro and accel");
+		accelgyrocalMPU9250(gyroBias, accelBias); // Calibrate gyro and accelerometers, load biases in bias registers
+		Serial.println("accel biases (mg)"); Serial.println(1000.*accelBias[0]); Serial.println(1000.*accelBias[1]); Serial.println(1000.*accelBias[2]);
+		Serial.println("gyro biases (dps)"); Serial.println(gyroBias[0]); Serial.println(gyroBias[1]); Serial.println(gyroBias[2]);
 
 #if HAVE_DISPLAY
-			display.clearDisplay();
+		display.clearDisplay();
 
-			display.setCursor(0, 0); display.print("MPU9250 bias");
-			display.setCursor(0, 8); display.print(" x   y   z  ");
+		display.setCursor(0, 0); display.print("MPU9250 bias");
+		display.setCursor(0, 8); display.print(" x   y   z  ");
 
-			display.setCursor(0,  16); display.print((int)(1000*accelBias[0]));
-			display.setCursor(24, 16); display.print((int)(1000*accelBias[1]));
-			display.setCursor(48, 16); display.print((int)(1000*accelBias[2]));
-			display.setCursor(72, 16); display.print("mg");
+		display.setCursor(0,  16); display.print((int)(1000*accelBias[0]));
+		display.setCursor(24, 16); display.print((int)(1000*accelBias[1]));
+		display.setCursor(48, 16); display.print((int)(1000*accelBias[2]));
+		display.setCursor(72, 16); display.print("mg");
 
-			display.setCursor(0,  24); display.print(gyroBias[0], 1);
-			display.setCursor(24, 24); display.print(gyroBias[1], 1);
-			display.setCursor(48, 24); display.print(gyroBias[2], 1);
-			display.setCursor(66, 24); display.print("o/s");
+		display.setCursor(0,  24); display.print(gyroBias[0], 1);
+		display.setCursor(24, 24); display.print(gyroBias[1], 1);
+		display.setCursor(48, 24); display.print(gyroBias[2], 1);
+		display.setCursor(66, 24); display.print("o/s");
 
-			display.display();
-			delay(1000);
+		display.display();
+		delay(1000);
 #endif
 
-			initMPU9250();
-			Serial.println("MPU9250 initialized for active data mode...."); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
+		initMPU9250();
+		Serial.println("MPU9250 initialized for active data mode...."); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
 
-			// Read the WHO_AM_I register of the magnetometer, this is a good test of communication
-			byte d = readByte(AK8963_ADDRESS, AK8963_WHO_AM_I);  // Read WHO_AM_I register for AK8963
-			Serial.print("AK8963 "); Serial.print("I AM "); Serial.print(d, HEX); Serial.print(" I should be "); Serial.println(0x48, HEX);
+		// Read the WHO_AM_I register of the magnetometer, this is a good test of communication
+		byte d = readByte(AK8963_ADDRESS, AK8963_WHO_AM_I);  // Read WHO_AM_I register for AK8963
+		Serial.print("AK8963 "); Serial.print("I AM "); Serial.print(d, HEX); Serial.print(" I should be "); Serial.println(0x48, HEX);
 #if HAVE_DISPLAY
-			display.clearDisplay();
-			display.setCursor(20,0); display.print("AK8963");
-			display.setCursor(0,10); display.print("I AM");
-			display.setCursor(0,20); display.print(d, HEX);
-			display.setCursor(0,30); display.print("I Should Be");
-			display.setCursor(0,40); display.print(0x48, HEX);
-			display.display();
-			delay(1000);
+		display.clearDisplay();
+		display.setCursor(20,0); display.print("AK8963");
+		display.setCursor(0,10); display.print("I AM");
+		display.setCursor(0,20); display.print(d, HEX);
+		display.setCursor(0,30); display.print("I Should Be");
+		display.setCursor(0,40); display.print(0x48, HEX);
+		display.display();
+		delay(1000);
 #endif
 
-			// Get magnetometer calibration from AK8963 ROM
-			initAK8963(magCalibration); Serial.println("AK8963 initialized for active data mode...."); // Initialize device for active mode read of magnetometer
+		// Get magnetometer calibration from AK8963 ROM
+		initAK8963(magCalibration);
+		Serial.println("AK8963 initialized for active data mode...."); // Initialize device for active mode read of magnetometer
 
-			magcalMPU9250(magBias, magScale);
-			Serial.println("AK8963 mag biases (mG)"); Serial.println(magBias[0]); Serial.println(magBias[1]); Serial.println(magBias[2]);
-			Serial.println("AK8963 mag scale (mG)"); Serial.println(magScale[0]); Serial.println(magScale[1]); Serial.println(magScale[2]);
-			delay(2000); // add delay to see results before serial spew of data
+		magcalMPU9250(magBias, magScale);
+		Serial.println("AK8963 mag biases (mG)"); Serial.println(magBias[0]); Serial.println(magBias[1]); Serial.println(magBias[2]);
+		Serial.println("AK8963 mag scale (mG)"); Serial.println(magScale[0]); Serial.println(magScale[1]); Serial.println(magScale[2]);
+		delay(2000); // add delay to see results before serial spew of data
 
-			if(SerialDebug) {
-				//  Serial.println("Calibration values: ");
-				Serial.print("X-Axis sensitivity adjustment value "); Serial.println(magCalibration[0], 2);
-				Serial.print("Y-Axis sensitivity adjustment value "); Serial.println(magCalibration[1], 2);
-				Serial.print("Z-Axis sensitivity adjustment value "); Serial.println(magCalibration[2], 2);
-			}
+		if (SerialDebug) {
+			//  Serial.println("Calibration values: ");
+			Serial.print("X-Axis sensitivity adjustment value "); Serial.println(magCalibration[0], 2);
+			Serial.print("Y-Axis sensitivity adjustment value "); Serial.println(magCalibration[1], 2);
+			Serial.print("Z-Axis sensitivity adjustment value "); Serial.println(magCalibration[2], 2);
+		}
 
 #if HAVE_DISPLAY
-			display.clearDisplay();
-			display.setCursor(20,0); display.print("AK8963");
-			display.setCursor(0,10); display.print("ASAX "); display.setCursor(50,10); display.print(magCalibration[0], 2);
-			display.setCursor(0,20); display.print("ASAY "); display.setCursor(50,20); display.print(magCalibration[1], 2);
-			display.setCursor(0,30); display.print("ASAZ "); display.setCursor(50,30); display.print(magCalibration[2], 2);
-			display.display();
-			delay(1000);
+		display.clearDisplay();
+		display.setCursor(20,0); display.print("AK8963");
+		display.setCursor(0,10); display.print("ASAX "); display.setCursor(50,10); display.print(magCalibration[0], 2);
+		display.setCursor(0,20); display.print("ASAY "); display.setCursor(50,20); display.print(magCalibration[1], 2);
+		display.setCursor(0,30); display.print("ASAZ "); display.setCursor(50,30); display.print(magCalibration[2], 2);
+		display.display();
+		delay(1000);
 #endif
 
 #if HAVE_PRESSURE
-			// Reset the MS5637 pressure sensor
-			MS5637Reset();
-			delay(100);
-			Serial.println("MS5637 pressure sensor reset...");
-			// Read PROM data from MS5637 pressure sensor
-			MS5637PromRead(Pcal);
-			Serial.println("PROM dta read:");
-			Serial.print("C0 = "); Serial.println(Pcal[0]);
-			unsigned char refCRC = Pcal[0] >> 12;
-			Serial.print("C1 = "); Serial.println(Pcal[1]);
-			Serial.print("C2 = "); Serial.println(Pcal[2]);
-			Serial.print("C3 = "); Serial.println(Pcal[3]);
-			Serial.print("C4 = "); Serial.println(Pcal[4]);
-			Serial.print("C5 = "); Serial.println(Pcal[5]);
-			Serial.print("C6 = "); Serial.println(Pcal[6]);
+		// Reset the MS5637 pressure sensor
+		MS5637Reset();
+		delay(100);
+		Serial.println("MS5637 pressure sensor reset...");
+		// Read PROM data from MS5637 pressure sensor
+		MS5637PromRead(Pcal);
+		Serial.println("PROM dta read:");
+		Serial.print("C0 = "); Serial.println(Pcal[0]);
+		unsigned char refCRC = Pcal[0] >> 12;
+		Serial.print("C1 = "); Serial.println(Pcal[1]);
+		Serial.print("C2 = "); Serial.println(Pcal[2]);
+		Serial.print("C3 = "); Serial.println(Pcal[3]);
+		Serial.print("C4 = "); Serial.println(Pcal[4]);
+		Serial.print("C5 = "); Serial.println(Pcal[5]);
+		Serial.print("C6 = "); Serial.println(Pcal[6]);
 
-			nCRC = MS5637checkCRC(Pcal);  //calculate checksum to ensure integrity of MS5637 calibration data
-			Serial.print("Checksum = "); Serial.print(nCRC); Serial.print(" , should be "); Serial.println(refCRC);
+		nCRC = MS5637checkCRC(Pcal);  //calculate checksum to ensure integrity of MS5637 calibration data
+		Serial.print("Checksum = "); Serial.print(nCRC); Serial.print(" , should be "); Serial.println(refCRC);
 #endif
 
 #if HAVE_DISPLAY
-			display.clearDisplay();
-			display.setCursor(20,0); display.print("MS5637");
-			display.setCursor(0,10); display.print("CRC is "); display.setCursor(50,10); display.print(nCRC);
-			display.setCursor(0,20); display.print("Should be "); display.setCursor(50,30); display.print(refCRC);
-			display.display();
-			delay(1000);
+		display.clearDisplay();
+		display.setCursor(20,0); display.print("MS5637");
+		display.setCursor(0,10); display.print("CRC is "); display.setCursor(50,10); display.print(nCRC);
+		display.setCursor(0,20); display.print("Should be "); display.setCursor(50,30); display.print(refCRC);
+		display.display();
+		delay(1000);
 #endif
 
-			attachInterrupt(intPin, myinthandler, RISING);  // define interrupt for INT pin output of MPU9250
+		attachInterrupt(intPin, myinthandler, RISING);  // define interrupt for INT pin output of MPU9250
 
+	} else {
+		Serial.print("Could not connect to MPU9250: 0x");
+		Serial.println(c, HEX);
+		while (1) {
+			; // Loop forever if communication doesn't happen
 		}
-	else
-		{
-			Serial.print("Could not connect to MPU9250: 0x");
-			Serial.println(c, HEX);
-			while(1) ; // Loop forever if communication doesn't happen
-		}
+	}
 }
 
 void loop()
 {
 	// If intPin goes high, all data registers have new data
-	if(true || newData == true) {  // On interrupt, read data
+	if (true || newData == true) {  // On interrupt, read data
 		newData = false;  // reset newData flag
 		readMPU9250Data(MPU9250Data); // INT cleared on any read
-		//   readAccelData(accelCount);  // Read the x/y/z adc values
+		// readAccelData(accelCount);  // Read the x/y/z adc values
 
-    // Now we'll calculate the accleration value into actual g's
+		// Now we'll calculate the accleration value into actual g's
 		ax = (float)MPU9250Data[0]*aRes - accelBias[0];  // get actual g value, this depends on scale being set
 		ay = (float)MPU9250Data[1]*aRes - accelBias[1];
 		az = (float)MPU9250Data[2]*aRes - accelBias[2];
 
-		//   readGyroData(gyroCount);  // Read the x/y/z adc values
+		// readGyroData(gyroCount);  // Read the x/y/z adc values
 
 		// Calculate the gyro value into actual degrees per second
 		gx = (float)MPU9250Data[4]*gRes;  // get actual gyro value, this depends on scale being set
@@ -532,7 +532,7 @@ void loop()
 
 		// Calculate the magnetometer values in milliGauss
 		// Include factory calibration per data sheet and user environmental corrections
-		if(newMagData == true) {
+		if (newMagData == true) {
 			newMagData = false; // reset newMagData flag
 			mx = (float)magCount[0]*mRes*magCalibration[0] - magBias[0];  // get actual magnetometer value, this depends on scale being set
 			my = (float)magCount[1]*mRes*magCalibration[1] - magBias[1];
@@ -566,7 +566,7 @@ void loop()
 	delt_t = millis() - count;
 	if (delt_t > 500) { // update LCD once per half-second independent of read rate
 
-		if(SerialDebug) {
+		if (SerialDebug) {
 			Serial.print("ax = "); Serial.print((int)1000*ax);
 			Serial.print(" ay = "); Serial.print((int)1000*ay);
 			Serial.print(" az = "); Serial.print((int)1000*az); Serial.println(" mg");
@@ -598,23 +598,20 @@ void loop()
 		Temperature = (2000 + (dT*Pcal[6])/pow(2, 23))/100;           // First-order Temperature in degrees Centigrade
 		//
 		// Second order corrections
-		if(Temperature > 20)
-			{
-				T2 = 5*dT*dT/pow(2, 38); // correction for high temperatures
-				OFFSET2 = 0;
-				SENS2 = 0;
-			}
-		if(Temperature < 20)                   // correction for low temperature
-			{
-				T2      = 3*dT*dT/pow(2, 33);
-				OFFSET2 = 61*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
-				SENS2   = 29*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
-			}
-		if(Temperature < -15)                      // correction for very low temperature
-			{
-				OFFSET2 = OFFSET2 + 17*(100*Temperature + 1500)*(100*Temperature + 1500);
-				SENS2 = SENS2 + 9*(100*Temperature + 1500)*(100*Temperature + 1500);
-			}
+		if (Temperature > 20) {
+			T2 = 5*dT*dT/pow(2, 38); // correction for high temperatures
+			OFFSET2 = 0;
+			SENS2 = 0;
+		}
+		if (Temperature < 20) { // correction for low temperature
+			T2      = 3*dT*dT/pow(2, 33);
+			OFFSET2 = 61*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
+			SENS2   = 29*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
+		}
+		if (Temperature < -15) { // correction for very low temperature
+			OFFSET2 = OFFSET2 + 17*(100*Temperature + 1500)*(100*Temperature + 1500);
+			SENS2 = SENS2 + 9*(100*Temperature + 1500)*(100*Temperature + 1500);
+		}
 		// End of second order corrections
 		//
 		Temperature = Temperature - T2/100;
@@ -640,7 +637,7 @@ void loop()
 
 		float altitude = 145366.45*(1. - pow((Pressure/1013.25), 0.190284));
 
-		if(SerialDebug) {
+		if (SerialDebug) {
 			Serial.print("Digital temperature value = "); Serial.print( (float)Temperature, 2); Serial.println(" C"); // temperature in degrees Celsius
 			Serial.print("Digital temperature value = "); Serial.print(9.*(float) Temperature/5. + 32., 2); Serial.println(" F"); // temperature in degrees Fahrenheit
 			Serial.print("Digital pressure value = "); Serial.print((float) Pressure, 2);  Serial.println(" mbar");// pressure in millibar
@@ -682,7 +679,7 @@ void loop()
 		lin_ax = ax + a31;
 		lin_ay = ay + a32;
 		lin_az = az - a33;
-		if(SerialDebug) {
+		if (SerialDebug) {
 			Serial.print("Yaw, Pitch, Roll: ");
 			Serial.print(yaw, 2);
 			Serial.print(", ");
@@ -765,60 +762,60 @@ void myinthandler()
 	newData = true;
 }
 
-void getMres() {
-	switch (Mscale)
-		{
-			// Possible magnetometer scales (and their register bit settings) are:
-			// 14 bit resolution (0) and 16 bit resolution (1)
-		case MFS_14BITS:
-			mRes = 10.*4912./8190.; // Proper scale to return milliGauss
-			break;
-		case MFS_16BITS:
-			mRes = 10.*4912./32760.0; // Proper scale to return milliGauss
-			break;
-		}
+void getMres()
+{
+	switch (Mscale) {
+		// Possible magnetometer scales (and their register bit settings) are:
+		// 14 bit resolution (0) and 16 bit resolution (1)
+	case MFS_14BITS:
+		mRes = 10.*4912./8190.; // Proper scale to return milliGauss
+		break;
+	case MFS_16BITS:
+		mRes = 10.*4912./32760.0; // Proper scale to return milliGauss
+		break;
+	}
 }
 
-void getGres() {
-	switch (Gscale)
-		{
-			// Possible gyro scales (and their register bit settings) are:
-			// 250 DPS (00), 500 DPS (01), 1000 DPS (10), and 2000 DPS  (11).
-			// Here's a bit of an algorith to calculate DPS/(ADC tick) based on that 2-bit value:
-		case GFS_250DPS:
-			gRes = 250.0/32768.0;
-			break;
-		case GFS_500DPS:
-			gRes = 500.0/32768.0;
-			break;
-		case GFS_1000DPS:
-			gRes = 1000.0/32768.0;
-			break;
-		case GFS_2000DPS:
-			gRes = 2000.0/32768.0;
-			break;
-		}
+void getGres()
+{
+	switch (Gscale) {
+		// Possible gyro scales (and their register bit settings) are:
+		// 250 DPS (00), 500 DPS (01), 1000 DPS (10), and 2000 DPS  (11).
+		// Here's a bit of an algorith to calculate DPS/(ADC tick) based on that 2-bit value:
+	case GFS_250DPS:
+		gRes = 250.0/32768.0;
+		break;
+	case GFS_500DPS:
+		gRes = 500.0/32768.0;
+		break;
+	case GFS_1000DPS:
+		gRes = 1000.0/32768.0;
+		break;
+	case GFS_2000DPS:
+		gRes = 2000.0/32768.0;
+		break;
+	}
 }
 
-void getAres() {
-	switch (Ascale)
-		{
-			// Possible accelerometer scales (and their register bit settings) are:
-			// 2 Gs (00), 4 Gs (01), 8 Gs (10), and 16 Gs  (11).
-			// Here's a bit of an algorith to calculate DPS/(ADC tick) based on that 2-bit value:
-		case AFS_2G:
-			aRes = 2.0/32768.0;
-			break;
-		case AFS_4G:
-			aRes = 4.0/32768.0;
-			break;
-		case AFS_8G:
-			aRes = 8.0/32768.0;
-			break;
-		case AFS_16G:
-			aRes = 16.0/32768.0;
-			break;
-		}
+void getAres()
+{
+	switch (Ascale) {
+		// Possible accelerometer scales (and their register bit settings) are:
+		// 2 Gs (00), 4 Gs (01), 8 Gs (10), and 16 Gs  (11).
+		// Here's a bit of an algorith to calculate DPS/(ADC tick) based on that 2-bit value:
+	case AFS_2G:
+		aRes = 2.0/32768.0;
+		break;
+	case AFS_4G:
+		aRes = 4.0/32768.0;
+		break;
+	case AFS_8G:
+		aRes = 8.0/32768.0;
+		break;
+	case AFS_16G:
+		aRes = 16.0/32768.0;
+		break;
+	}
 }
 
 void readMPU9250Data(int16_t * destination)
@@ -857,10 +854,10 @@ void readMagData(int16_t * destination)
 {
 	uint8_t rawData[7];  // x/y/z gyro register data, ST2 register stored here, must read ST2 at end of data acquisition
 	newMagData = (readByte(AK8963_ADDRESS, AK8963_ST1) & 0x01);
-	if(newMagData == true) { // wait for magnetometer data ready bit to be set
+	if (newMagData == true) { // wait for magnetometer data ready bit to be set
 		readBytes(AK8963_ADDRESS, AK8963_XOUT_L, 7, &rawData[0]);  // Read the six raw data and ST2 registers sequentially into data array
 		uint8_t c = rawData[6]; // End data read by reading ST2 register
-		if(!(c & 0x08)) { // Check if magnetic sensor overflow set, if not then report data
+		if (!(c & 0x08)) { // Check if magnetic sensor overflow set, if not then report data
 			destination[0] = ((int16_t)rawData[1] << 8) | rawData[0] ;  // Turn the MSB and LSB into a signed 16-bit value
 			destination[1] = ((int16_t)rawData[3] << 8) | rawData[2] ;  // Data stored as little Endian
 			destination[2] = ((int16_t)rawData[5] << 8) | rawData[4] ;
@@ -927,7 +924,7 @@ void initMPU9250()
 	c = c & ~0x18; // Clear GFS bits [4:3]
 	c = c | Gscale << 3; // Set full scale range for the gyro
 	// c =| 0x00; // Set Fchoice for the gyro to 11 by writing its inverse to bits 1:0 of GYRO_CONFIG
-	writeByte(MPU9250_ADDRESS, GYRO_CONFIG, c ); // Write new GYRO_CONFIG value to register
+	writeByte(MPU9250_ADDRESS, GYRO_CONFIG, c); // Write new GYRO_CONFIG value to register
 
 	// Set accelerometer full-scale range configuration
 	c = readByte(MPU9250_ADDRESS, ACCEL_CONFIG); // get current ACCEL_CONFIG register value
@@ -1030,8 +1027,11 @@ void accelgyrocalMPU9250(float * dest1, float * dest2)
 	gyro_bias[1]  /= (int32_t) packet_count;
 	gyro_bias[2]  /= (int32_t) packet_count;
 
-	if(accel_bias[2] > 0L) {accel_bias[2] -= (int32_t) accelsensitivity;}  // Remove gravity from the z-axis accelerometer bias calculation
-	else {accel_bias[2] += (int32_t) accelsensitivity;}
+	if (accel_bias[2] > 0L) {
+		accel_bias[2] -= (int32_t) accelsensitivity; // Remove gravity from the z-axis accelerometer bias calculation
+	} else {
+		accel_bias[2] += (int32_t) accelsensitivity;
+	}
 
 	// Construct the gyro biases for push to the hardware gyro bias registers, which are reset to zero upon device startup
 	data[0] = (-gyro_bias[0]/4  >> 8) & 0xFF; // Divide by 4 to get 32.9 LSB per deg/s to conform to expected bias input format
@@ -1071,8 +1071,10 @@ void accelgyrocalMPU9250(float * dest1, float * dest2)
 	uint32_t mask = 1uL; // Define mask for temperature compensation bit 0 of lower byte of accelerometer bias registers
 	uint8_t mask_bit[3] = {0, 0, 0}; // Define array to hold mask bit for each accelerometer bias axis
 
-	for(ii = 0; ii < 3; ii++) {
-		if((accel_bias_reg[ii] & mask)) mask_bit[ii] = 0x01; // If temperature compensation bit is set, record that fact in mask_bit
+	for (ii = 0; ii < 3; ii++) {
+		if ((accel_bias_reg[ii] & mask)) {
+			mask_bit[ii] = 0x01; // If temperature compensation bit is set, record that fact in mask_bit
+		}
 	}
 
 	// Construct total accelerometer bias, including calculated average accelerometer bias from above
@@ -1117,16 +1119,30 @@ void magcalMPU9250(float * dest1, float * dest2)
 	delay(4000);
 
 	// shoot for ~fifteen seconds of mag data
-	if(Mmode == 0x02) sample_count = 128;  // at 8 Hz ODR, new mag data is available every 125 ms
-	if(Mmode == 0x06) sample_count = 1500;  // at 100 Hz ODR, new mag data is available every 10 ms
-	for(ii = 0; ii < sample_count; ii++) {
+	if (Mmode == 0x02) {
+		sample_count = 128;  // at 8 Hz ODR, new mag data is available every 125 ms
+	}
+	if (Mmode == 0x06) {
+		sample_count = 1500;  // at 100 Hz ODR, new mag data is available every 10 ms
+	}
+
+	for (ii = 0; ii < sample_count; ii++) {
 		readMagData(mag_temp);  // Read the mag data
 		for (int jj = 0; jj < 3; jj++) {
-			if(mag_temp[jj] > mag_max[jj]) mag_max[jj] = mag_temp[jj];
-			if(mag_temp[jj] < mag_min[jj]) mag_min[jj] = mag_temp[jj];
+			if (mag_temp[jj] > mag_max[jj]) {
+				mag_max[jj] = mag_temp[jj];
+			}
+
+			if (mag_temp[jj] < mag_min[jj]) {
+				mag_min[jj] = mag_temp[jj];
+			}
 		}
-		if(Mmode == 0x02) delay(135);  // at 8 Hz ODR, new mag data is available every 125 ms
-		if(Mmode == 0x06) delay(12);  // at 100 Hz ODR, new mag data is available every 10 ms
+		if (Mmode == 0x02) {
+			delay(135);  // at 8 Hz ODR, new mag data is available every 125 ms
+		}
+		if (Mmode == 0x06) {
+			delay(12);  // at 100 Hz ODR, new mag data is available every 10 ms
+		}
 	}
 
 	//    Serial.println("mag x min/max:"); Serial.println(mag_max[0]); Serial.println(mag_min[0]);
@@ -1174,7 +1190,7 @@ void MPU9250SelfTest(float * destination) // Should return percent deviation fro
 	writeByte(MPU9250_ADDRESS, ACCEL_CONFIG2, 0x02); // Set accelerometer rate to 1 kHz and bandwidth to 92 Hz
 	writeByte(MPU9250_ADDRESS, ACCEL_CONFIG, FS<<3); // Set full scale range for the accelerometer to 2 g
 
-	for( int ii = 0; ii < 200; ii++) {  // get average current values of gyro and acclerometer
+	for (int ii = 0; ii < 200; ii++) {  // get average current values of gyro and acclerometer
 
 		readBytes(MPU9250_ADDRESS, ACCEL_XOUT_H, 6, &rawData[0]);        // Read the six raw data registers into data array
 		aAvg[0] += (int16_t)(((int16_t)rawData[0] << 8) | rawData[1]) ;  // Turn the MSB and LSB into a signed 16-bit value
@@ -1197,7 +1213,7 @@ void MPU9250SelfTest(float * destination) // Should return percent deviation fro
 	writeByte(MPU9250_ADDRESS, GYRO_CONFIG,  0xE0); // Enable self test on all three axes and set gyro range to +/- 250 degrees/s
 	delay(25);  // Delay a while to let the device stabilize
 
-	for( int ii = 0; ii < 200; ii++) {  // get average self-test values of gyro and acclerometer
+	for (int ii = 0; ii < 200; ii++) {  // get average self-test values of gyro and acclerometer
 
 		readBytes(MPU9250_ADDRESS, ACCEL_XOUT_H, 6, &rawData[0]);  // Read the six raw data registers into data array
 		aSTAvg[0] += (int16_t)(((int16_t)rawData[0] << 8) | rawData[1]) ;  // Turn the MSB and LSB into a signed 16-bit value
@@ -1266,7 +1282,8 @@ void MS5637PromRead(uint16_t * destination)
 		uint8_t i = 0;
 		Wire.requestFrom(MS5637_ADDRESS, 2);   // Read two bytes from slave PROM address
 		while (Wire.available()) {
-			data[i++] = Wire.read(); }               // Put read results in the Rx buffer
+			data[i++] = Wire.read(); // Put read results in the Rx buffer
+		}
 		destination[ii] = (uint16_t) (((uint16_t) data[0] << 8) | data[1]); // construct PROM data for return to main program
 	}
 }
@@ -1278,15 +1295,14 @@ uint32_t MS5637Read(uint8_t CMD, uint8_t OSR)  // temperature data read
 	Wire.write(CMD | OSR);                  // Put pressure conversion command in Tx buffer
 	Wire.endTransmission(I2C_NOSTOP);        // Send the Tx buffer, but send a restart to keep connection alive
 
-	switch (OSR)
-		{
-		case ADC_256: delay(1); break;  // delay for conversion to complete
-		case ADC_512: delay(3); break;
-		case ADC_1024: delay(4); break;
-		case ADC_2048: delay(6); break;
-		case ADC_4096: delay(10); break;
-		case ADC_8192: delay(20); break;
-		}
+	switch (OSR) {
+	case ADC_256: delay(1); break;  // delay for conversion to complete
+	case ADC_512: delay(3); break;
+	case ADC_1024: delay(4); break;
+	case ADC_2048: delay(6); break;
+	case ADC_4096: delay(10); break;
+	case ADC_8192: delay(20); break;
+	}
 
 	Wire.beginTransmission(MS5637_ADDRESS);  // Initialize the Tx buffer
 	Wire.write(0x00);                        // Put ADC read command in Tx buffer
@@ -1294,7 +1310,8 @@ uint32_t MS5637Read(uint8_t CMD, uint8_t OSR)  // temperature data read
 	uint8_t i = 0;
 	Wire.requestFrom(MS5637_ADDRESS, 3);     // Read three bytes from slave PROM address
 	while (Wire.available()) {
-		data[i++] = Wire.read(); }               // Put read results in the Rx buffer
+		data[i++] = Wire.read(); // Put read results in the Rx buffer
+	}
 	return (uint32_t) (((uint32_t) data[0] << 16) | (uint32_t) data[1] << 8 | data[2]); // construct PROM data for return to main program
 }
 
@@ -1308,16 +1325,20 @@ unsigned char MS5637checkCRC(uint16_t * n_prom)  // calculate checksum from PROM
 
 	n_prom[0] = ((n_prom[0]) & 0x0FFF);  // replace CRC byte by 0 for checksum calculation
 	n_prom[7] = 0;
-	for(cnt = 0; cnt < 16; cnt++)
-		{
-			if(cnt%2==1) n_rem ^= (unsigned short) ((n_prom[cnt>>1]) & 0x00FF);
-			else         n_rem ^= (unsigned short)  (n_prom[cnt>>1]>>8);
-			for(n_bit = 8; n_bit > 0; n_bit--)
-				{
-					if(n_rem & 0x8000)    n_rem = (n_rem<<1) ^ 0x3000;
-					else                  n_rem = (n_rem<<1);
-				}
+	for (cnt = 0; cnt < 16; cnt++) {
+		if (cnt%2==1) {
+			n_rem ^= (unsigned short) ((n_prom[cnt>>1]) & 0x00FF);
+		} else {
+			n_rem ^= (unsigned short)  (n_prom[cnt>>1]>>8);
 		}
+		for (n_bit = 8; n_bit > 0; n_bit--) {
+			if (n_rem & 0x8000) {
+				n_rem = (n_rem<<1) ^ 0x3000;
+			} else {
+				n_rem = (n_rem<<1);
+			}
+		}
+	}
 	n_rem = ((n_rem>>12) & 0x000F);
 	return (n_rem ^ 0x00);
 }
@@ -1334,36 +1355,35 @@ void I2Cscan()
 	Serial.println("Scanning...");
 
 	nDevices = 0;
-	for(address = 1; address < 127; address++ )
-		{
-			// The i2c_scanner uses the return value of
-			// the Write.endTransmisstion to see if
-			// a device did acknowledge to the address.
-			Wire.beginTransmission(address);
-			error = Wire.endTransmission();
+	for (address = 1; address < 127; address++) {
+		// The i2c_scanner uses the return value of
+		// the Write.endTransmisstion to see if
+		// a device did acknowledge to the address.
+		Wire.beginTransmission(address);
+		error = Wire.endTransmission();
 
-			if (error == 0)
-				{
-					Serial.print("I2C device found at address 0x");
-					if (address<16)
-						Serial.print("0");
-					Serial.print(address,HEX);
-					Serial.println("  !");
+		if (error == 0) {
+			Serial.print("I2C device found at address 0x");
+			if (address<16) {
+				Serial.print("0");
+			}
+			Serial.print(address,HEX);
+			Serial.println("  !");
 
-					nDevices++;
-				}
-			else if (error==4)
-				{
-					Serial.print("Unknow error at address 0x");
-					if (address<16)
-						Serial.print("0");
-					Serial.println(address,HEX);
-				}
+			nDevices++;
+		} else if (error==4) {
+			Serial.print("Unknow error at address 0x");
+			if (address<16) {
+				Serial.print("0");
+			}
+			Serial.println(address,HEX);
 		}
-	if (nDevices == 0)
+	}
+	if (nDevices == 0) {
 		Serial.println("No I2C devices found\n");
-	else
+	} else {
 		Serial.println("done\n");
+	}
 
 }
 #endif
@@ -1397,5 +1417,6 @@ void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * des
 	uint8_t i = 0;
 	Wire.requestFrom(address, count);  // Read bytes from slave register address
 	while (Wire.available()) {
-		dest[i++] = Wire.read(); }         // Put read results in the Rx buffer
+		dest[i++] = Wire.read();   // Put read results in the Rx buffer
+	}
 }
