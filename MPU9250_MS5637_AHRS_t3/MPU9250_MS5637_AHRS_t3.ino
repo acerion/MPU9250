@@ -32,23 +32,9 @@
  We are also using the 400 kHz fast I2C mode by setting the TWI_FREQ  to 400000L /twi.h utility file.
  */
 #define HAVE_PRESSURE 0
-#define HAVE_DISPLAY 0
-
 
 #include <Wire.h>
 #include <SPI.h>
-#if HAVE_DISPLAY
-#include <Adafruit_GFX.h>
-#include <Adafruit_PCD8544.h>
-
-// Using NOKIA 5110 monochrome 84 x 48 pixel display
-// pin 7 - Serial clock out (SCLK)
-// pin 6 - Serial data out (DIN)
-// pin 5 - Data/Command select (D/C)
-// pin 3 - LCD chip select (SCE)
-// pin 4 - LCD reset (RST)
-Adafruit_PCD8544 display = Adafruit_PCD8544(7, 6, 5, 3, 4);
-#endif
 
 // See MS5637-02BA03 Low Voltage Barometric Pressure Sensor Data Sheet
 #define MS5637_RESET      0x1E
@@ -344,43 +330,12 @@ void setup()
 	pinMode(myLed, OUTPUT);
 	digitalWrite(myLed, HIGH);
 
-#if HAVE_DISPLAY
-	display.begin(); // Initialize the display
-	display.setContrast(40); // Set the contrast
-
-	// Start device display with ID of sensor
-	display.clearDisplay();
-	display.setTextSize(2);
-	display.setCursor(0,0); display.print("MPU9250");
-	display.setTextSize(1);
-	display.setCursor(0, 20); display.print("9-DOF 16-bit");
-	display.setCursor(0, 30); display.print("motion sensor");
-	display.setCursor(20,40); display.print("60 ug LSB");
-	display.display();
-	delay(1000);
-
-	// Set up for data display
-	display.setTextSize(1); // Set text size to normal, 2 is twice normal etc.
-	display.setTextColor(BLACK); // Set pixel color; 1 on the monochrome screen
-	display.clearDisplay();   // clears the screen and buffer
-#endif
-
 	//I2Cscan();// look for I2C devices on the bus
 
 	// Read the WHO_AM_I register, this is a good test of communication
 	Serial.println("MPU9250 9-axis motion sensor...");
 	byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
 	Serial.print("MPU9250 "); Serial.print("I AM "); Serial.print(c, HEX); Serial.print(" I should be "); Serial.println(0x71, HEX);
-
-#if HAVE_DISPLAY
-	display.setCursor(20,0); display.print("MPU9250");
-	display.setCursor(0,10); display.print("I AM");
-	display.setCursor(0,20); display.print(c, HEX);
-	display.setCursor(0,30); display.print("I Should Be");
-	display.setCursor(0,40); display.print(0x71, HEX);
-	display.display();
-	delay(1000);
-#endif
 
 	if (c == 0x71) { // WHO_AM_I should always be 0x68
 		Serial.println("MPU9250 is online...");
@@ -404,42 +359,12 @@ void setup()
 		Serial.println("accel biases (mg)"); Serial.println(1000.*accelBias[0]); Serial.println(1000.*accelBias[1]); Serial.println(1000.*accelBias[2]);
 		Serial.println("gyro biases (dps)"); Serial.println(gyroBias[0]); Serial.println(gyroBias[1]); Serial.println(gyroBias[2]);
 
-#if HAVE_DISPLAY
-		display.clearDisplay();
-
-		display.setCursor(0, 0); display.print("MPU9250 bias");
-		display.setCursor(0, 8); display.print(" x   y   z  ");
-
-		display.setCursor(0,  16); display.print((int)(1000*accelBias[0]));
-		display.setCursor(24, 16); display.print((int)(1000*accelBias[1]));
-		display.setCursor(48, 16); display.print((int)(1000*accelBias[2]));
-		display.setCursor(72, 16); display.print("mg");
-
-		display.setCursor(0,  24); display.print(gyroBias[0], 1);
-		display.setCursor(24, 24); display.print(gyroBias[1], 1);
-		display.setCursor(48, 24); display.print(gyroBias[2], 1);
-		display.setCursor(66, 24); display.print("o/s");
-
-		display.display();
-		delay(1000);
-#endif
-
 		initMPU9250();
 		Serial.println("MPU9250 initialized for active data mode...."); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
 
 		// Read the WHO_AM_I register of the magnetometer, this is a good test of communication
 		byte d = readByte(AK8963_ADDRESS, AK8963_WHO_AM_I);  // Read WHO_AM_I register for AK8963
 		Serial.print("AK8963 "); Serial.print("I AM "); Serial.print(d, HEX); Serial.print(" I should be "); Serial.println(0x48, HEX);
-#if HAVE_DISPLAY
-		display.clearDisplay();
-		display.setCursor(20,0); display.print("AK8963");
-		display.setCursor(0,10); display.print("I AM");
-		display.setCursor(0,20); display.print(d, HEX);
-		display.setCursor(0,30); display.print("I Should Be");
-		display.setCursor(0,40); display.print(0x48, HEX);
-		display.display();
-		delay(1000);
-#endif
 
 		// Get magnetometer calibration from AK8963 ROM
 		initAK8963(magCalibration);
@@ -456,16 +381,6 @@ void setup()
 			Serial.print("Y-Axis sensitivity adjustment value "); Serial.println(magCalibration[1], 2);
 			Serial.print("Z-Axis sensitivity adjustment value "); Serial.println(magCalibration[2], 2);
 		}
-
-#if HAVE_DISPLAY
-		display.clearDisplay();
-		display.setCursor(20,0); display.print("AK8963");
-		display.setCursor(0,10); display.print("ASAX "); display.setCursor(50,10); display.print(magCalibration[0], 2);
-		display.setCursor(0,20); display.print("ASAY "); display.setCursor(50,20); display.print(magCalibration[1], 2);
-		display.setCursor(0,30); display.print("ASAZ "); display.setCursor(50,30); display.print(magCalibration[2], 2);
-		display.display();
-		delay(1000);
-#endif
 
 #if HAVE_PRESSURE
 		// Reset the MS5637 pressure sensor
@@ -486,15 +401,6 @@ void setup()
 
 		nCRC = MS5637checkCRC(Pcal);  //calculate checksum to ensure integrity of MS5637 calibration data
 		Serial.print("Checksum = "); Serial.print(nCRC); Serial.print(" , should be "); Serial.println(refCRC);
-#endif
-
-#if HAVE_DISPLAY
-		display.clearDisplay();
-		display.setCursor(20,0); display.print("MS5637");
-		display.setCursor(0,10); display.print("CRC is "); display.setCursor(50,10); display.print(nCRC);
-		display.setCursor(0,20); display.print("Should be "); display.setCursor(50,30); display.print(refCRC);
-		display.display();
-		delay(1000);
 #endif
 
 		attachInterrupt(intPin, myinthandler, RISING);  // define interrupt for INT pin output of MPU9250
@@ -703,31 +609,6 @@ void loop()
 			Serial.print("rate = "); Serial.print((float)sumCount/sum, 2); Serial.println(" Hz");
 		}
 
-#if HAVE_DISPLAY
-		display.clearDisplay();
-
-		display.setCursor(0, 0); display.print(" x   y   z ");
-
-		display.setCursor(0,  8); display.print((int)(1000*ax));
-		display.setCursor(24, 8); display.print((int)(1000*ay));
-		display.setCursor(48, 8); display.print((int)(1000*az));
-		display.setCursor(72, 8); display.print("mg");
-
-		display.setCursor(0,  16); display.print((int)(gx));
-		display.setCursor(24, 16); display.print((int)(gy));
-		display.setCursor(48, 16); display.print((int)(gz));
-		display.setCursor(66, 16); display.print("o/s");
-
-		display.setCursor(0,  24); display.print((int)(mx));
-		display.setCursor(24, 24); display.print((int)(my));
-		display.setCursor(48, 24); display.print((int)(mz));
-		display.setCursor(72, 24); display.print("mG");
-
-		display.setCursor(0,  32); display.print((int)(yaw));
-		display.setCursor(24, 32); display.print((int)(pitch));
-		display.setCursor(48, 32); display.print((int)(roll));
-		display.setCursor(66, 32); display.print("ypr");
-
 		// With these settings the filter is updating at a ~145 Hz rate using the Madgwick scheme and
 		// >200 Hz using the Mahony scheme even though the display refreshes at only 2 Hz.
 		// The filter update rate is determined mostly by the mathematical steps in the respective algorithms,
@@ -739,11 +620,6 @@ void loop()
 		// stabilization control of a fast-moving robot or quadcopter. Compare to the update rate of 200 Hz
 		// produced by the on-board Digital Motion Processor of Invensense's MPU6050 6 DoF and MPU9150 9DoF sensors.
 		// The 3.3 V 8 MHz Pro Mini is doing pretty well!
-		display.setCursor(0, 40); display.print(altitude, 0); display.print("ft");
-		display.setCursor(68, 0); display.print(9.*Temperature/5. + 32., 0);
-		display.setCursor(42, 40); display.print((float) sumCount / (1000.*sum), 2); display.print("kHz");
-		display.display();
-#endif
 
 		digitalWrite(myLed, !digitalRead(myLed));
 		count = millis();
