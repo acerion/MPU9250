@@ -30,17 +30,16 @@
  Because the sensor is not 5V tolerant, we are using a 3.3 V 8 MHz Pro Mini or a 3.3 V Teensy 3.1.
  We have disabled the internal pull-ups used by the Wire library in the Wire.h/twi.c utility file.
  We are also using the 400 kHz fast I2C mode by setting the TWI_FREQ  to 400000L /twi.h utility file.
- */
-#define HAVE_PRESSURE 0
+*/
+
+
+
 
 #include <Wire.h>
 #include <SPI.h>
 
-// See MS5637-02BA03 Low Voltage Barometric Pressure Sensor Data Sheet
-#define MS5637_RESET      0x1E
-#define MS5637_CONVERT_D1 0x40
-#define MS5637_CONVERT_D2 0x50
-#define MS5637_ADC_READ   0x00
+
+
 
 // See also MPU-9250 Register Map and Descriptions, Revision 4.0, RM-MPU-9250A-00, Rev. 1.4, 9/9/2013 for registers not listed in
 // above document; the MPU9250 and MPU9150 are virtually identical but the latter has a different register map
@@ -197,11 +196,9 @@
 #if ADO
 #define MPU9250_ADDRESS 0x69  // Device address when ADO = 1
 #define AK8963_ADDRESS 0x0C   //  Address of magnetometer
-#define MS5637_ADDRESS 0x76   // Address of altimeter
 #else
 #define MPU9250_ADDRESS 0x68  // Device address when ADO = 0
 #define AK8963_ADDRESS 0x0C   //  Address of magnetometer
-#define MS5637_ADDRESS 0x76   // Address of altimeter
 #endif
 
 #define SerialDebug true  // set to true to get Serial output for debugging
@@ -226,17 +223,7 @@ enum Mscale {
 	MFS_16BITS      // 0.15 mG per LSB
 };
 
-#define ADC_256  0x00 // define pressure and temperature conversion rates
-#define ADC_512  0x02
-#define ADC_1024 0x04
-#define ADC_2048 0x06
-#define ADC_4096 0x08
-#define ADC_8192 0x0A
-#define ADC_D1   0x40
-#define ADC_D2   0x50
-
 // Specify sensor full scale
-uint8_t OSR = ADC_8192;     // set pressure amd temperature oversample rate
 uint8_t Gscale = GFS_250DPS;
 uint8_t Ascale = AFS_2G;
 uint8_t Mscale = MFS_16BITS; // Choose either 14-bit or 16-bit magnetometer resolution
@@ -250,11 +237,6 @@ bool newMagData = false;
 
 int myLed = 13;
 
-uint16_t Pcal[8];         // calibration constants from MS5637 PROM registers
-unsigned char nCRC;       // calculated check sum to ensure PROM integrity
-uint32_t D1 = 0, D2 = 0;  // raw MS5637 pressure and temperature data
-double dT, OFFSET, SENS, T2, OFFSET2, SENS2;  // First order and second order corrections for raw S5637 temperature and pressure data
-
 int16_t MPU9250Data[7]; // used to read all 14 bytes at once from the MPU9250 accel/gyro
 int16_t accelCount[3];  // Stores the 16-bit signed accelerometer sensor output
 int16_t gyroCount[3];   // Stores the 16-bit signed gyro sensor output
@@ -263,7 +245,6 @@ float magCalibration[3] = {0, 0, 0};  // Factory mag calibration and mag bias
 float gyroBias[3] = {0, 0, 0}, accelBias[3] = {0, 0, 0}, magBias[3] = {0, 0, 0}, magScale[3]  = {0, 0, 0};      // Bias corrections for gyro and accelerometer
 int16_t tempCount;            // temperature raw count output
 float   temperature;          // Stores the MPU9250 gyro internal chip temperature in degrees Celsius
-double Temperature, Pressure; // stores MS5637 pressures sensor pressure and temperature
 float SelfTest[6];            // holds results of gyro and accelerometer self test
 
 // global constants for 9 DoF fusion and AHRS (Attitude and Heading Reference System)
@@ -382,27 +363,6 @@ void setup()
 			Serial.print("Z-Axis sensitivity adjustment value "); Serial.println(magCalibration[2], 2);
 		}
 
-#if HAVE_PRESSURE
-		// Reset the MS5637 pressure sensor
-		MS5637Reset();
-		delay(100);
-		Serial.println("MS5637 pressure sensor reset...");
-		// Read PROM data from MS5637 pressure sensor
-		MS5637PromRead(Pcal);
-		Serial.println("PROM dta read:");
-		Serial.print("C0 = "); Serial.println(Pcal[0]);
-		unsigned char refCRC = Pcal[0] >> 12;
-		Serial.print("C1 = "); Serial.println(Pcal[1]);
-		Serial.print("C2 = "); Serial.println(Pcal[2]);
-		Serial.print("C3 = "); Serial.println(Pcal[3]);
-		Serial.print("C4 = "); Serial.println(Pcal[4]);
-		Serial.print("C5 = "); Serial.println(Pcal[5]);
-		Serial.print("C6 = "); Serial.println(Pcal[6]);
-
-		nCRC = MS5637checkCRC(Pcal);  //calculate checksum to ensure integrity of MS5637 calibration data
-		Serial.print("Checksum = "); Serial.print(nCRC); Serial.print(" , should be "); Serial.println(refCRC);
-#endif
-
 		attachInterrupt(intPin, myinthandler, RISING);  // define interrupt for INT pin output of MPU9250
 
 	} else {
@@ -489,67 +449,16 @@ void loop()
 			Serial.print(" qz = "); Serial.println(q[3]);
 		}
 
-#if HAVE_PRESSURE
+
+
+
 		tempCount = readTempData();  // Read the gyro adc values
 		temperature = ((float) tempCount) / 333.87 + 21.0; // Gyro chip temperature in degrees Centigrade
 		// Print temperature in degrees Centigrade
 		Serial.print("Gyro temperature is ");  Serial.print(temperature, 1);  Serial.println(" degrees C"); // Print T values to tenths of s degree C
 
-		D1 = MS5637Read(ADC_D1, OSR);  // get raw pressure value
-		D2 = MS5637Read(ADC_D2, OSR);  // get raw temperature value
-		dT = D2 - Pcal[5]*pow(2,8);    // calculate temperature difference from reference
-		OFFSET = Pcal[2]*pow(2, 17) + dT*Pcal[4]/pow(2,6);
-		SENS = Pcal[1]*pow(2,16) + dT*Pcal[3]/pow(2,7);
 
-		Temperature = (2000 + (dT*Pcal[6])/pow(2, 23))/100;           // First-order Temperature in degrees Centigrade
-		//
-		// Second order corrections
-		if (Temperature > 20) {
-			T2 = 5*dT*dT/pow(2, 38); // correction for high temperatures
-			OFFSET2 = 0;
-			SENS2 = 0;
-		}
-		if (Temperature < 20) { // correction for low temperature
-			T2      = 3*dT*dT/pow(2, 33);
-			OFFSET2 = 61*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
-			SENS2   = 29*(100*Temperature - 2000)*(100*Temperature - 2000)/16;
-		}
-		if (Temperature < -15) { // correction for very low temperature
-			OFFSET2 = OFFSET2 + 17*(100*Temperature + 1500)*(100*Temperature + 1500);
-			SENS2 = SENS2 + 9*(100*Temperature + 1500)*(100*Temperature + 1500);
-		}
-		// End of second order corrections
-		//
-		Temperature = Temperature - T2/100;
-		OFFSET = OFFSET - OFFSET2;
-		SENS = SENS - SENS2;
 
-		Pressure = (((D1*SENS)/pow(2, 21) - OFFSET)/pow(2, 15))/100;  // Pressure in mbar or kPa
-
-		const int station_elevation_m = 1050.0*0.3048; // Accurate for the roof on my house; convert from feet to meters
-
-		float baroin = Pressure; // pressure is now in millibars
-
-		// Formula to correct absolute pressure in millbars to "altimeter pressure" in inches of mercury
-		// comparable to weather report pressure
-		float part1 = baroin - 0.3; //Part 1 of formula
-		const float part2 = 0.0000842288;
-		float part3 = pow(part1, 0.190284);
-		float part4 = (float)station_elevation_m / part3;
-		float part5 = (1.0 + (part2 * part4));
-		float part6 = pow(part5, 5.2553026);
-		float altimeter_setting_pressure_mb = part1 * part6; // Output is now in adjusted millibars
-		baroin = altimeter_setting_pressure_mb * 0.02953;
-
-		float altitude = 145366.45*(1. - pow((Pressure/1013.25), 0.190284));
-
-		if (SerialDebug) {
-			Serial.print("Digital temperature value = "); Serial.print( (float)Temperature, 2); Serial.println(" C"); // temperature in degrees Celsius
-			Serial.print("Digital temperature value = "); Serial.print(9.*(float) Temperature/5. + 32., 2); Serial.println(" F"); // temperature in degrees Fahrenheit
-			Serial.print("Digital pressure value = "); Serial.print((float) Pressure, 2);  Serial.println(" mbar");// pressure in millibar
-			Serial.print("Altitude = "); Serial.print(altitude, 2); Serial.println(" feet");
-		}
-#endif
 
 		// Define output variables from updated quaternion---these are Tait-Bryan angles, commonly used in aircraft orientation.
 		// In this coordinate system, the positive z-axis is down toward Earth.
@@ -1136,62 +1045,11 @@ void MPU9250SelfTest(float * destination) // Should return percent deviation fro
 	}
 
 }
-#if HAVE_PRESSURE
-// I2C communication with the MS5637 is a little different from that with the MPU9250 and most other sensors
-// For the MS5637, we write commands, and the MS5637 sends data in response, rather than directly reading
-// MS5637 registers
-
-void MS5637Reset()
-{
-	Wire.beginTransmission(MS5637_ADDRESS);  // Initialize the Tx buffer
-	Wire.write(MS5637_RESET);                // Put reset command in Tx buffer
-	Wire.endTransmission();                  // Send the Tx buffer
-}
-
-void MS5637PromRead(uint16_t * destination)
-{
-	uint8_t data[2] = {0,0};
-	for (uint8_t ii = 0; ii < 7; ii++) {
-		Wire.beginTransmission(MS5637_ADDRESS);  // Initialize the Tx buffer
-		Wire.write(0xA0 | ii << 1);              // Put PROM address in Tx buffer
-		Wire.endTransmission(I2C_NOSTOP);        // Send the Tx buffer, but send a restart to keep connection alive
-		uint8_t i = 0;
-		Wire.requestFrom(MS5637_ADDRESS, 2);   // Read two bytes from slave PROM address
-		while (Wire.available()) {
-			data[i++] = Wire.read(); // Put read results in the Rx buffer
-		}
-		destination[ii] = (uint16_t) (((uint16_t) data[0] << 8) | data[1]); // construct PROM data for return to main program
-	}
-}
-
-uint32_t MS5637Read(uint8_t CMD, uint8_t OSR)  // temperature data read
-{
-	uint8_t data[3] = {0,0,0};
-	Wire.beginTransmission(MS5637_ADDRESS);  // Initialize the Tx buffer
-	Wire.write(CMD | OSR);                  // Put pressure conversion command in Tx buffer
-	Wire.endTransmission(I2C_NOSTOP);        // Send the Tx buffer, but send a restart to keep connection alive
-
-	switch (OSR) {
-	case ADC_256: delay(1); break;  // delay for conversion to complete
-	case ADC_512: delay(3); break;
-	case ADC_1024: delay(4); break;
-	case ADC_2048: delay(6); break;
-	case ADC_4096: delay(10); break;
-	case ADC_8192: delay(20); break;
-	}
-
-	Wire.beginTransmission(MS5637_ADDRESS);  // Initialize the Tx buffer
-	Wire.write(0x00);                        // Put ADC read command in Tx buffer
-	Wire.endTransmission(I2C_NOSTOP);        // Send the Tx buffer, but send a restart to keep connection alive
-	uint8_t i = 0;
-	Wire.requestFrom(MS5637_ADDRESS, 3);     // Read three bytes from slave PROM address
-	while (Wire.available()) {
-		data[i++] = Wire.read(); // Put read results in the Rx buffer
-	}
-	return (uint32_t) (((uint32_t) data[0] << 16) | (uint32_t) data[1] << 8 | data[2]); // construct PROM data for return to main program
-}
 
 
+
+
+#if 0
 
 unsigned char MS5637checkCRC(uint16_t * n_prom)  // calculate checksum from PROM register contents
 {
@@ -1218,9 +1076,6 @@ unsigned char MS5637checkCRC(uint16_t * n_prom)  // calculate checksum from PROM
 	n_rem = ((n_rem>>12) & 0x000F);
 	return (n_rem ^ 0x00);
 }
-
-
-// I2C scan function
 
 void I2Cscan()
 {
@@ -1263,6 +1118,9 @@ void I2Cscan()
 
 }
 #endif
+
+
+
 
 // I2C read/write functions for the MPU9250 and AK8963 sensors
 
