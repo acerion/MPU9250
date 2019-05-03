@@ -31,9 +31,13 @@
  We have disabled the internal pull-ups used by the Wire library in the Wire.h/twi.c utility file.
  We are also using the 400 kHz fast I2C mode by setting the TWI_FREQ  to 400000L /twi.h utility file.
  */
-//#include "Wire.h"   
-#include <i2c_t3.h>
+#define HAVE_PRESSURE 0
+#define HAVE_DISPLAY 0
+
+
+#include <Wire.h>
 #include <SPI.h>
+#if HAVE_DISPLAY
 #include <Adafruit_GFX.h>
 #include <Adafruit_PCD8544.h>
 
@@ -44,6 +48,7 @@
 // pin 3 - LCD chip select (SCE)
 // pin 4 - LCD reset (RST)
 Adafruit_PCD8544 display = Adafruit_PCD8544(7, 6, 5, 3, 4);
+#endif
 
 // See MS5637-02BA03 Low Voltage Barometric Pressure Sensor Data Sheet
 #define MS5637_RESET      0x1E
@@ -303,13 +308,34 @@ float lin_ax, lin_ay, lin_az;             // linear acceleration (acceleration w
 float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
 float eInt[3] = {0.0f, 0.0f, 0.0f};       // vector to hold integral error for Mahony method
 
+void readBytes(uint8_t address, uint8_t subAddress, uint8_t count, uint8_t * dest);
+void writeByte(uint8_t address, uint8_t subAddress, uint8_t data);
+uint8_t readByte(uint8_t address, uint8_t subAddress);
+
+void getAres();
+void getGres();
+void getMres();
+void initMPU9250();
+void initAK8963(float * destination);
+int16_t readTempData();
+
+void myinthandler();
+
+void readMPU9250Data(int16_t * destination);
+void readAccelData(int16_t * destination);
+void readMagData(int16_t * destination);
+void readGyroData(int16_t * destination);
+
+void MPU9250SelfTest(float * destination);
+void accelgyrocalMPU9250(float * dest1, float * dest2);
+void magcalMPU9250(float * dest1, float * dest2);
 
 void setup()
 {
-//  Wire.begin();
+  Wire.begin();
 //  TWBR = 12;  // 400 kbit/sec I2C speed for Pro Mini
   // Setup for Master mode, pins 18/19, external pullups, 400kHz for Teensy 3.1
-  Wire.begin(I2C_MASTER, 0x00, I2C_PINS_16_17, I2C_PULLUP_EXT, I2C_RATE_400);
+  //Wire.begin(I2C_MASTER, 0x00, I2C_PINS_16_17, I2C_PULLUP_EXT, I2C_RATE_400);
   delay(4000);
   Serial.begin(38400);
   
@@ -318,6 +344,7 @@ void setup()
   pinMode(myLed, OUTPUT);
   digitalWrite(myLed, HIGH);
   
+#if HAVE_DISPLAY
   display.begin(); // Initialize the display
   display.setContrast(40); // Set the contrast
   
@@ -336,13 +363,16 @@ void setup()
   display.setTextSize(1); // Set text size to normal, 2 is twice normal etc.
   display.setTextColor(BLACK); // Set pixel color; 1 on the monochrome screen
   display.clearDisplay();   // clears the screen and buffer
+#endif
 
-  I2Cscan();// look for I2C devices on the bus
+  //I2Cscan();// look for I2C devices on the bus
     
   // Read the WHO_AM_I register, this is a good test of communication
   Serial.println("MPU9250 9-axis motion sensor...");
   byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);  // Read WHO_AM_I register for MPU-9250
   Serial.print("MPU9250 "); Serial.print("I AM "); Serial.print(c, HEX); Serial.print(" I should be "); Serial.println(0x71, HEX);
+
+#if HAVE_DISPLAY
   display.setCursor(20,0); display.print("MPU9250");
   display.setCursor(0,10); display.print("I AM");
   display.setCursor(0,20); display.print(c, HEX);  
@@ -350,6 +380,7 @@ void setup()
   display.setCursor(0,40); display.print(0x71, HEX); 
   display.display();
   delay(1000); 
+#endif
 
   if (c == 0x71) // WHO_AM_I should always be 0x68
   {  
@@ -374,6 +405,7 @@ void setup()
    Serial.println("accel biases (mg)"); Serial.println(1000.*accelBias[0]); Serial.println(1000.*accelBias[1]); Serial.println(1000.*accelBias[2]);
    Serial.println("gyro biases (dps)"); Serial.println(gyroBias[0]); Serial.println(gyroBias[1]); Serial.println(gyroBias[2]);
 
+#if HAVE_DISPLAY
   display.clearDisplay();
      
   display.setCursor(0, 0); display.print("MPU9250 bias");
@@ -391,6 +423,7 @@ void setup()
  
   display.display();
   delay(1000);  
+#endif
    
   initMPU9250(); 
   Serial.println("MPU9250 initialized for active data mode...."); // Initialize device for active mode read of acclerometer, gyroscope, and temperature
@@ -398,6 +431,7 @@ void setup()
   // Read the WHO_AM_I register of the magnetometer, this is a good test of communication
   byte d = readByte(AK8963_ADDRESS, AK8963_WHO_AM_I);  // Read WHO_AM_I register for AK8963
   Serial.print("AK8963 "); Serial.print("I AM "); Serial.print(d, HEX); Serial.print(" I should be "); Serial.println(0x48, HEX);
+#if HAVE_DISPLAY
   display.clearDisplay();
   display.setCursor(20,0); display.print("AK8963");
   display.setCursor(0,10); display.print("I AM");
@@ -406,6 +440,7 @@ void setup()
   display.setCursor(0,40); display.print(0x48, HEX);  
   display.display();
   delay(1000); 
+#endif
   
   // Get magnetometer calibration from AK8963 ROM
   initAK8963(magCalibration); Serial.println("AK8963 initialized for active data mode...."); // Initialize device for active mode read of magnetometer
@@ -422,6 +457,7 @@ void setup()
   Serial.print("Z-Axis sensitivity adjustment value "); Serial.println(magCalibration[2], 2);
   }
   
+#if HAVE_DISPLAY
   display.clearDisplay();
   display.setCursor(20,0); display.print("AK8963");
   display.setCursor(0,10); display.print("ASAX "); display.setCursor(50,10); display.print(magCalibration[0], 2);
@@ -429,7 +465,9 @@ void setup()
   display.setCursor(0,30); display.print("ASAZ "); display.setCursor(50,30); display.print(magCalibration[2], 2);
   display.display();
   delay(1000);  
-  
+#endif
+
+#if HAVE_PRESSURE
   // Reset the MS5637 pressure sensor
   MS5637Reset();
   delay(100);
@@ -447,14 +485,17 @@ void setup()
   Serial.print("C6 = "); Serial.println(Pcal[6]);
   
   nCRC = MS5637checkCRC(Pcal);  //calculate checksum to ensure integrity of MS5637 calibration data
-  Serial.print("Checksum = "); Serial.print(nCRC); Serial.print(" , should be "); Serial.println(refCRC);  
+  Serial.print("Checksum = "); Serial.print(nCRC); Serial.print(" , should be "); Serial.println(refCRC);
+#endif
   
+#if HAVE_DISPLAY
   display.clearDisplay();
   display.setCursor(20,0); display.print("MS5637");
   display.setCursor(0,10); display.print("CRC is "); display.setCursor(50,10); display.print(nCRC);
   display.setCursor(0,20); display.print("Should be "); display.setCursor(50,30); display.print(refCRC);
   display.display();
   delay(1000);  
+#endif
 
   attachInterrupt(intPin, myinthandler, RISING);  // define interrupt for INT pin output of MPU9250
 
@@ -470,7 +511,7 @@ void setup()
 void loop()
 {  
   // If intPin goes high, all data registers have new data
-   if(newData == true) {  // On interrupt, read data
+   if(true || newData == true) {  // On interrupt, read data
      newData = false;  // reset newData flag
      readMPU9250Data(MPU9250Data); // INT cleared on any read
  //   readAccelData(accelCount);  // Read the x/y/z adc values
@@ -518,7 +559,7 @@ void loop()
   // function to get North along the accel +x-axis, East along the accel -y-axis, and Down along the accel -z-axis.
   // This orientation choice can be modified to allow any convenient (non-NED) orientation convention.
   // Pass gyro rate as rad/s
-    MadgwickQuaternionUpdate(-ax, ay, az, gx*PI/180.0f, -gy*PI/180.0f, -gz*PI/180.0f,  my,  -mx, mz);
+  //MadgwickQuaternionUpdate(-ax, ay, az, gx*PI/180.0f, -gy*PI/180.0f, -gz*PI/180.0f,  my,  -mx, mz);
 //  if(passThru)MahonyQuaternionUpdate(-ax, ay, az, gx*PI/180.0f, -gy*PI/180.0f, -gz*PI/180.0f,  my,  -mx, mz);
 
     // Serial print and/or display at 0.5 s rate independent of data rates
@@ -540,7 +581,9 @@ void loop()
     Serial.print(" qx = "); Serial.print(q[1]); 
     Serial.print(" qy = "); Serial.print(q[2]); 
     Serial.print(" qz = "); Serial.println(q[3]); 
-    }               
+    }   
+
+#if HAVE_PRESSURE
     tempCount = readTempData();  // Read the gyro adc values
     temperature = ((float) tempCount) / 333.87 + 21.0; // Gyro chip temperature in degrees Centigrade
    // Print temperature in degrees Centigrade      
@@ -603,6 +646,7 @@ void loop()
     Serial.print("Digital pressure value = "); Serial.print((float) Pressure, 2);  Serial.println(" mbar");// pressure in millibar
     Serial.print("Altitude = "); Serial.print(altitude, 2); Serial.println(" feet");
     }
+#endif
     
    // Define output variables from updated quaternion---these are Tait-Bryan angles, commonly used in aircraft orientation.
   // In this coordinate system, the positive z-axis is down toward Earth. 
@@ -662,6 +706,7 @@ void loop()
     Serial.print("rate = "); Serial.print((float)sumCount/sum, 2); Serial.println(" Hz");
     }
    
+#if HAVE_DISPLAY
     display.clearDisplay();    
  
     display.setCursor(0, 0); display.print(" x   y   z ");
@@ -701,6 +746,7 @@ void loop()
     display.setCursor(68, 0); display.print(9.*Temperature/5. + 32., 0); 
     display.setCursor(42, 40); display.print((float) sumCount / (1000.*sum), 2); display.print("kHz"); 
     display.display();
+#endif
 
     digitalWrite(myLed, !digitalRead(myLed));
     count = millis(); 
@@ -1198,7 +1244,7 @@ void MPU9250SelfTest(float * destination) // Should return percent deviation fro
    }
    
 }
-
+#if HAVE_PRESSURE
 // I2C communication with the MS5637 is a little different from that with the MPU9250 and most other sensors
 // For the MS5637, we write commands, and the MS5637 sends data in response, rather than directly reading
 // MS5637 registers
@@ -1320,7 +1366,7 @@ void I2Cscan()
     Serial.println("done\n");
     
 }
-
+#endif
 
 // I2C read/write functions for the MPU9250 and AK8963 sensors
 
@@ -1337,10 +1383,8 @@ void I2Cscan()
 	uint8_t data; // `data` will store the register data	 
 	Wire.beginTransmission(address);         // Initialize the Tx buffer
 	Wire.write(subAddress);	                 // Put slave register address in Tx buffer
-	Wire.endTransmission(I2C_NOSTOP);        // Send the Tx buffer, but send a restart to keep connection alive
-//	Wire.endTransmission(false);             // Send the Tx buffer, but send a restart to keep connection alive
-//	Wire.requestFrom(address, 1);  // Read one byte from slave register address 
-	Wire.requestFrom(address, (size_t) 1);   // Read one byte from slave register address 
+	Wire.endTransmission(false);             // Send the Tx buffer, but send a restart to keep connection alive
+	Wire.requestFrom(address, (uint8_t) 1);  // Read one byte from slave register address 
 	data = Wire.read();                      // Fill Rx buffer with result
 	return data;                             // Return data read from slave register
 }
@@ -1349,11 +1393,9 @@ void I2Cscan()
 {  
 	Wire.beginTransmission(address);   // Initialize the Tx buffer
 	Wire.write(subAddress);            // Put slave register address in Tx buffer
-	Wire.endTransmission(I2C_NOSTOP);  // Send the Tx buffer, but send a restart to keep connection alive
-//	Wire.endTransmission(false);       // Send the Tx buffer, but send a restart to keep connection alive
+	Wire.endTransmission(false);       // Send the Tx buffer, but send a restart to keep connection alive
 	uint8_t i = 0;
-//        Wire.requestFrom(address, count);  // Read bytes from slave register address 
-        Wire.requestFrom(address, (size_t) count);  // Read bytes from slave register address 
+        Wire.requestFrom(address, count);  // Read bytes from slave register address 
 	while (Wire.available()) {
         dest[i++] = Wire.read(); }         // Put read results in the Rx buffer
 }
