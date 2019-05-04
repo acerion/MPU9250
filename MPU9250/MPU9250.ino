@@ -105,15 +105,21 @@ bool newMagData = false;
 int myLed = 13;
 
 int16_t MPU9250Data[7]; // used to read all 14 bytes at once from the MPU9250 accel/gyro
-int16_t accelCount[3];  // Stores the 16-bit signed accelerometer sensor output
-int16_t gyroCount[3];   // Stores the 16-bit signed gyro sensor output
 int16_t magCount[3];    // Stores the 16-bit signed magnetometer sensor output
 float magCalibration[3] = {0, 0, 0};  // Factory mag calibration and mag bias
-float gyroBias[3] = {0, 0, 0}, accelBias[3] = {0, 0, 0}, magBias[3] = {0, 0, 0}, magScale[3]  = {0, 0, 0};      // Bias corrections for gyro and accelerometer
-int16_t tempCount;            // temperature raw count output
-float   temperature;          // Stores the MPU9250 gyro internal chip temperature in degrees Celsius
-float SelfTest[6];            // holds results of gyro and accelerometer self test
 
+/* Bias corrections for gyro and accelerometer. */
+float gyroBias[3] = {0, 0, 0};
+float accelBias[3] = {0, 0, 0};
+
+float magBias[3] = {0, 0, 0};
+float magScale[3]  = {0, 0, 0};
+
+/* Results of gyro and accelerometer self test. */
+float SelfTest[6];
+
+/* Raw temperature data read from chip. */
+int16_t raw_temp;
 
 
 /*
@@ -146,20 +152,36 @@ const float GyroMeasDrift = PI * (0.0f  / 180.0f);   // gyroscope measurement dr
 */
 const float beta = sqrt(3.0f / 4.0f) * GyroMeasError;   // compute beta
 const float zeta = sqrt(3.0f / 4.0f) * GyroMeasDrift;   // compute zeta, the other free parameter in the Madgwick scheme usually set to a small or zero value
-#define Kp 2.0f * 5.0f // these are the free parameters in the Mahony filter and fusion scheme, Kp for proportional feedback, Ki for integral
-#define Ki 0.0f
+
+/* These are the free parameters in the Mahony filter and fusion
+   scheme, Kp for proportional feedback, Ki for integral. */
+const float Kp = 2.0 * 5.0;
+const float Ki = 0.0;
 
 uint32_t delt_t = 0, count = 0, sumCount = 0;  // used to control display output rate
+
 float pitch, yaw, roll;
-float a12, a22, a31, a32, a33;            // rotation matrix coefficients for Euler angles and gravity components
+
+/* Rotation matrix coefficients for Euler angles and gravity components. */
+float a12, a22, a31, a32, a33;
+
 float deltat = 0.0f, sum = 0.0f;          // integration interval for both filter schemes
 uint32_t lastUpdate = 0, firstUpdate = 0; // used to calculate integration interval
 uint32_t Now = 0;                         // used to calculate integration interval
 
-float ax, ay, az, gx, gy, gz, mx, my, mz; // variables to hold latest sensor data values
-float lin_ax, lin_ay, lin_az;             // linear acceleration (acceleration with gravity component subtracted)
-float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};    // vector to hold quaternion
-float eInt[3] = {0.0f, 0.0f, 0.0f};       // vector to hold integral error for Mahony method
+/* Variables to hold latest sensor data values. */
+float ax, ay, az;
+float gx, gy, gz;
+float mx, my, mz;
+
+/* Linear acceleration (acceleration with gravity component subtracted). */
+float lin_ax, lin_ay, lin_az;
+
+/* Quaternion. */
+float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+
+/* Integral error for Mahony method. */
+float eInt[3] = {0.0f, 0.0f, 0.0f};
 
 
 
@@ -169,14 +191,11 @@ void getGres();
 void getMres();
 void initMPU9250();
 void initAK8963(float * destination);
-int16_t readTempData();
 
 void myinthandler();
 
 void readMPU9250Data(int16_t * destination);
-void readAccelData(int16_t * destination);
 void readMagData(int16_t * destination);
-void readGyroData(int16_t * destination);
 
 void MPU9250SelfTest(float * destination);
 void accelgyrocalMPU9250(float * dest1, float * dest2);
@@ -272,38 +291,44 @@ void setup()
 
 void loop()
 {
-	// If intPin goes high, all data registers have new data
-	if (true || newData == true) {  // On interrupt, read data
-		newData = false;  // reset newData flag
+	/* If intPin goes high, all data registers have new data. */
+	if (true || newData == true) {  /* On interrupt, read data. */
+		newData = false;  /* Reset newData flag. */
+
 		readMPU9250Data(MPU9250Data); // INT cleared on any read
-		// readAccelData(accelCount);  // Read the x/y/z adc values
 
-		// Now we'll calculate the accleration value into actual g's
-		ax = (float)MPU9250Data[0]*aRes - accelBias[0];  // get actual g value, this depends on scale being set
-		ay = (float)MPU9250Data[1]*aRes - accelBias[1];
-		az = (float)MPU9250Data[2]*aRes - accelBias[2];
 
-		// readGyroData(gyroCount);  // Read the x/y/z adc values
+		/* Calculate the acceleration value into actual g's. */
+		ax = (float) MPU9250Data[0] * aRes - accelBias[0];  /* Get actual g value, this depends on scale being set. */
+		ay = (float) MPU9250Data[1] * aRes - accelBias[1];
+		az = (float) MPU9250Data[2] * aRes - accelBias[2];
 
-		// Calculate the gyro value into actual degrees per second
-		gx = (float)MPU9250Data[4]*gRes;  // get actual gyro value, this depends on scale being set
-		gy = (float)MPU9250Data[5]*gRes;
-		gz = (float)MPU9250Data[6]*gRes;
 
-		readMagData(magCount);  // Read the x/y/z adc values
+		/* Calculate the gyro value into actual degrees per second. */
+		gx = (float) MPU9250Data[4] * gRes;  /* Get actual gyro value, this depends on scale being set. */
+		gy = (float) MPU9250Data[5] * gRes;
+		gz = (float) MPU9250Data[6] * gRes;
 
-		// Calculate the magnetometer values in milliGauss
-		// Include factory calibration per data sheet and user environmental corrections
+
+		/* Only save. Will be processed later. */
+		raw_temp = MPU9250Data[3];
+
+
+		readMagData(magCount);
+		/* Calculate the magnetometer values in milliGauss.
+		   Include factory calibration per data sheet and user
+		   environmental corrections. */
 		if (newMagData == true) {
-			newMagData = false; // reset newMagData flag
-			mx = (float)magCount[0]*mRes*magCalibration[0] - magBias[0];  // get actual magnetometer value, this depends on scale being set
-			my = (float)magCount[1]*mRes*magCalibration[1] - magBias[1];
-			mz = (float)magCount[2]*mRes*magCalibration[2] - magBias[2];
+			newMagData = false; /* Reset newMagData flag. */
+			mx = (float) magCount[0] * mRes * magCalibration[0] - magBias[0];  /* Get actual magnetometer value, this depends on scale being set. */
+			my = (float) magCount[1] * mRes * magCalibration[1] - magBias[1];
+			mz = (float) magCount[2] * mRes * magCalibration[2] - magBias[2];
 			mx *= magScale[0];
 			my *= magScale[1];
 			mz *= magScale[2];
 		}
 	}
+
 
 	Now = micros();
 	deltat = ((Now - lastUpdate)/1000000.0f); // set integration time by time elapsed since last filter update
@@ -311,6 +336,7 @@ void loop()
 
 	sum += deltat; // sum for averaging filter update rate
 	sumCount++;
+
 
 	/*
 	  Sensors x (y)-axis of the accelerometer/gyro is aligned with
@@ -368,10 +394,8 @@ void loop()
 
 
 		if (1) {
-			/* Gyro chip temperature in degrees Centigrade. */
-			tempCount = readTempData();
-			temperature = ((float) tempCount) / 333.87 + 21.0;
-			Serial.print("Gyro temperature is ");  Serial.print(temperature, 1);  Serial.println(" degrees C");
+			const float temperature = ((float) raw_temp) / 333.87 + 21.0;
+			Serial.print("Gyro temperature is "); Serial.print(temperature, 3); Serial.println(" degrees C");
 		}
 
 
@@ -502,7 +526,6 @@ void loop()
 		sumCount = 0;
 		sum = 0;
 	}
-
 }
 
 
@@ -583,39 +606,19 @@ void getAres()
 
 void readMPU9250Data(int16_t * destination)
 {
-	uint8_t rawData[14];  // x/y/z accel register data stored here
-	readBytes(MPU9250_ADDRESS, ACCEL_XOUT_H, 14, &rawData[0]);  // Read the 14 raw data registers into data array
-	destination[0] = ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a signed 16-bit value
-	destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;
-	destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ;
-	destination[3] = ((int16_t)rawData[6] << 8) | rawData[7] ;
-	destination[4] = ((int16_t)rawData[8] << 8) | rawData[9] ;
-	destination[5] = ((int16_t)rawData[10] << 8) | rawData[11] ;
-	destination[6] = ((int16_t)rawData[12] << 8) | rawData[13] ;
-}
+	uint8_t rawData[14];
 
+	/* Read the 14 raw data registers into data array. */
+	readBytes(MPU9250_ADDRESS, ACCEL_XOUT_H, 14, &rawData[0]);
 
-
-
-void readAccelData(int16_t * destination)
-{
-	uint8_t rawData[6];  // x/y/z accel register data stored here
-	readBytes(MPU9250_ADDRESS, ACCEL_XOUT_H, 6, &rawData[0]);  // Read the six raw data registers into data array
-	destination[0] = ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a signed 16-bit value
-	destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;
-	destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ;
-}
-
-
-
-
-void readGyroData(int16_t * destination)
-{
-	uint8_t rawData[6];  // x/y/z gyro register data stored here
-	readBytes(MPU9250_ADDRESS, GYRO_XOUT_H, 6, &rawData[0]);  // Read the six raw data registers sequentially into data array
-	destination[0] = ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a signed 16-bit value
-	destination[1] = ((int16_t)rawData[2] << 8) | rawData[3] ;
-	destination[2] = ((int16_t)rawData[4] << 8) | rawData[5] ;
+	/* Turn the MSB and LSB into a signed 16-bit value. */
+	destination[0] = ((int16_t)rawData[0] << 8) | rawData[1];
+	destination[1] = ((int16_t)rawData[2] << 8) | rawData[3];
+	destination[2] = ((int16_t)rawData[4] << 8) | rawData[5];
+	destination[3] = ((int16_t)rawData[6] << 8) | rawData[7]; /* Temperature. */
+	destination[4] = ((int16_t)rawData[8] << 8) | rawData[9];
+	destination[5] = ((int16_t)rawData[10] << 8) | rawData[11];
+	destination[6] = ((int16_t)rawData[12] << 8) | rawData[13];
 }
 
 
@@ -634,16 +637,6 @@ void readMagData(int16_t * destination)
 			destination[2] = ((int16_t)rawData[5] << 8) | rawData[4] ;
 		}
 	}
-}
-
-
-
-
-int16_t readTempData()
-{
-	uint8_t rawData[2];  // x/y/z gyro register data stored here
-	readBytes(MPU9250_ADDRESS, TEMP_OUT_H, 2, &rawData[0]);  // Read the two raw data registers sequentially into data array
-	return ((int16_t)rawData[0] << 8) | rawData[1] ;  // Turn the MSB and LSB into a 16-bit value
 }
 
 
@@ -1045,5 +1038,4 @@ void MPU9250SelfTest(float * destination) // Should return percent deviation fro
 		destination[i]   = 100.0*((float)(aSTAvg[i] - aAvg[i]))/factoryTrim[i] - 100.;   // Report percent differences
 		destination[i+3] = 100.0*((float)(gSTAvg[i] - gAvg[i]))/factoryTrim[i+3] - 100.; // Report percent differences
 	}
-
 }
