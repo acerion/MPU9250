@@ -12,7 +12,85 @@
   MHz!
 */
 
-void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz)
+
+
+
+#include <math.h>
+
+
+
+
+#include "quaternionFilters.h"
+
+
+
+
+/*
+  With certain settings the filter is updating at a ~145 Hz rate using
+  the Madgwick scheme and >200 Hz using the Mahony.
+
+  The filter update rate is determined mostly by the mathematical
+  steps in the respective algorithms, the processor speed (8 MHz for
+  the 3.3V Pro Mini), and the magnetometer ODR: an ODR of 10 Hz for
+  the magnetometer produce the above rates, maximum magnetometer ODR
+  of 100 Hz produces filter update rates of 36 - 145 and ~38 Hz for
+  the Madgwick and Mahony schemes, respectively.
+
+  This is presumably because the magnetometer read takes longer than
+  the gyro or accelerometer reads.
+
+  This filter update rate should be fast enough to maintain accurate
+  platform orientation for stabilization control of a fast-moving
+  robot or quadcopter. Compare to the update rate of 200 Hz produced
+  by the on-board Digital Motion Processor of Invensense's MPU6050 6
+  DoF and MPU9150 9DoF sensors.
+
+  The 3.3 V 8 MHz Pro Mini is doing pretty well!
+*/
+
+/*
+  Global constants for 9 DoF fusion and AHRS (Attitude and Heading
+  Reference System).
+*/
+const float GyroMeasError = M_PI * (4.0f / 180.0f);   // gyroscope measurement error in rads/s (start at 40 deg/s)
+const float GyroMeasDrift = M_PI * (0.0f  / 180.0f);   // gyroscope measurement drift in rad/s/s (start at 0.0 deg/s/s)
+/*
+  There is a tradeoff in the beta parameter between accuracy and
+  response speed.
+
+  In the original Madgwick study, beta of 0.041 (corresponding to
+  GyroMeasError of 2.7 degrees/s) was found to give optimal accuracy.
+  However, with this value, the LSM9SD0 response time is about 10
+  seconds to a stable initial quaternion.
+
+  Subsequent changes also require a longish lag time to a stable
+  output, not fast enough for a quadcopter or robot car!  By
+  increasing beta (GyroMeasError) by about a factor of fifteen, the
+  response time constant is reduced to ~2 sec
+
+  I haven't noticed any reduction in solution accuracy. This is
+  essentially the I coefficient in a PID control sense; the bigger the
+  feedback coefficient, the faster the solution converges, usually at
+  the expense of accuracy.
+
+  In any case, this is the free parameter in the Madgwick filtering
+  and fusion scheme.
+*/
+const float beta = sqrt(3.0f / 4.0f) * GyroMeasError;   // compute beta
+const float zeta = sqrt(3.0f / 4.0f) * GyroMeasDrift;   // compute zeta, the other free parameter in the Madgwick scheme usually set to a small or zero value
+
+/* These are the free parameters in the Mahony filter and fusion
+   scheme, Kp for proportional feedback, Ki for integral. */
+const float Kp = 2.0 * 5.0;
+const float Ki = 0.0;
+
+/* Integral error for Mahony method. */
+float eInt[3] = {0.0f, 0.0f, 0.0f};
+
+
+
+
+void MadgwickQuaternionUpdate(float * q, float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz, float deltat)
 {
 	float q1 = q[0], q2 = q[1], q3 = q[2], q4 = q[3];   // short name local variable for readability
 	float norm;
@@ -110,7 +188,7 @@ void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, 
   filtering on the error between estimated reference vectors and
   measured ones.
 */
-void MahonyQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz)
+void MahonyQuaternionUpdate(float * q, float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz, float deltat)
 {
 	float q1 = q[0], q2 = q[1], q3 = q[2], q4 = q[3];   // short name local variable for readability
 	float norm;

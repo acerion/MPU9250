@@ -22,10 +22,11 @@
 #define WITH_TEMPERATURE    1
 
 
-/* Do we want local calculations of quaternions and yaw/pitch/roll? */
+/* Do we want calculations of quaternions and yaw/pitch/roll to be
+   done on microcontroller? */
 #define WITH_LOCAL_AHRS     1
 #if WITH_LOCAL_AHRS
-#define PICK_MADGWICK       1   /* 1 = Madgwick; 0 = Mahony. */
+#define USE_MADGWICK        1   /* 1 = Madgwick filter; 0 = Mahony. */
 #endif
 
 

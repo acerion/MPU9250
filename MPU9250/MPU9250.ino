@@ -49,7 +49,6 @@
 
 
 #include "MPU9250.h"
-#include "MPU9250_debug_print.h"
 #include "MPU9250_ahrs.h"
 #include "MPU9250_regs.h"
 #include "MPU9250_i2c.h"
@@ -84,15 +83,12 @@ const uint32_t serial_baud_rate = 115200;
 */
 const int serial_debug_interval = 100;
 
-const bool serial_debug_meas = true;        /* Show accel, gyro, mag measurements on serial line. */
-#if WITH_LOCAL_AHRS
-const bool serial_debug_quaternion = true;  /* Show quaternions on serial line. */
-const bool serial_debug_ypr = true;          /* Show calculated basic ARHS values (yaw/pitch/roll) on serial line. */
-const bool serial_debug_other_ahrs = true;   /* Show other calculated AHRS values on serial line. */
-const bool serial_debug_filter_rate = true;  /* Show filter rate on serial line. */
-#endif
+/* Show accel, gyro, mag measurements on serial line. */
+const bool serial_debug_meas = true;
+
 #if WITH_TEMPERATURE
-const bool serial_debug_temperature = true; /* Show temperature on serial line. */
+/* Show temperature on serial line. */
+const bool serial_debug_temperature = true;
 #endif
 
 
@@ -163,67 +159,7 @@ uint32_t display_time_prev = 0;
 
 
 
-/*
-  With certain settings the filter is updating at a ~145 Hz rate using
-  the Madgwick scheme and >200 Hz using the Mahony.
-
-  The filter update rate is determined mostly by the mathematical
-  steps in the respective algorithms, the processor speed (8 MHz for
-  the 3.3V Pro Mini), and the magnetometer ODR: an ODR of 10 Hz for
-  the magnetometer produce the above rates, maximum magnetometer ODR
-  of 100 Hz produces filter update rates of 36 - 145 and ~38 Hz for
-  the Madgwick and Mahony schemes, respectively.
-
-  This is presumably because the magnetometer read takes longer than
-  the gyro or accelerometer reads.
-
-  This filter update rate should be fast enough to maintain accurate
-  platform orientation for stabilization control of a fast-moving
-  robot or quadcopter. Compare to the update rate of 200 Hz produced
-  by the on-board Digital Motion Processor of Invensense's MPU6050 6
-  DoF and MPU9150 9DoF sensors.
-
-  The 3.3 V 8 MHz Pro Mini is doing pretty well!
-*/
-
-/*
-  Global constants for 9 DoF fusion and AHRS (Attitude and Heading
-  Reference System).
-*/
-const float GyroMeasError = PI * (4.0f / 180.0f);   // gyroscope measurement error in rads/s (start at 40 deg/s)
-const float GyroMeasDrift = PI * (0.0f  / 180.0f);   // gyroscope measurement drift in rad/s/s (start at 0.0 deg/s/s)
-/*
-  There is a tradeoff in the beta parameter between accuracy and
-  response speed.
-
-  In the original Madgwick study, beta of 0.041 (corresponding to
-  GyroMeasError of 2.7 degrees/s) was found to give optimal accuracy.
-  However, with this value, the LSM9SD0 response time is about 10
-  seconds to a stable initial quaternion.
-
-  Subsequent changes also require a longish lag time to a stable
-  output, not fast enough for a quadcopter or robot car!  By
-  increasing beta (GyroMeasError) by about a factor of fifteen, the
-  response time constant is reduced to ~2 sec
-
-  I haven't noticed any reduction in solution accuracy. This is
-  essentially the I coefficient in a PID control sense; the bigger the
-  feedback coefficient, the faster the solution converges, usually at
-  the expense of accuracy.
-
-  In any case, this is the free parameter in the Madgwick filtering
-  and fusion scheme.
-*/
-const float beta = sqrt(3.0f / 4.0f) * GyroMeasError;   // compute beta
-const float zeta = sqrt(3.0f / 4.0f) * GyroMeasDrift;   // compute zeta, the other free parameter in the Madgwick scheme usually set to a small or zero value
-
-/* These are the free parameters in the Mahony filter and fusion
-   scheme, Kp for proportional feedback, Ki for integral. */
-const float Kp = 2.0 * 5.0;
-const float Ki = 0.0;
-
-/* Integration interval for both filter schemes. */
-float deltat = 0.0f;
+#if WITH_LOCAL_AHRS
 
 /* Variables used to calculate integration interval and frequency of
    calculations of output variables. */
@@ -234,10 +170,7 @@ uint32_t filter_time_prev = 0;
 /* Variable to hold results of calculations made with quaternions. */
 mpu_ahrs_t g_ahrs;
 
-extern float q[4];
-
-/* Integral error for Mahony method. */
-float eInt[3] = {0.0f, 0.0f, 0.0f};
+#endif
 
 
 
@@ -257,6 +190,8 @@ bool readMagData(int16_t * destination);
 void MPU9250SelfTest(float * destination);
 void accelGyroCalMPU9250(float * dest_g_bias, float * dest_a_bias);
 void magCalMPU9250(float * dest_bias, float * dest_scale);
+
+void debug_print_meas(const mpu_meas_t & meas);
 
 
 
@@ -305,8 +240,8 @@ void setup(void)
 	   registers. */
 	Serial.println("Calibrate gyro and accel");
 	accelGyroCalMPU9250(gyroBias, accelBias);
-	Serial.print("    accel biases (mg): "); Serial.print(1000.*accelBias[0]); Serial.print(""); Serial.print(1000.*accelBias[1]); Serial.print(""); Serial.println(1000.*accelBias[2]);
-	Serial.print("    gyro biases (dps): "); Serial.print(gyroBias[0]); Serial.print("");        Serial.print(gyroBias[1]); Serial.print("");        Serial.println(gyroBias[2]);
+	Serial.print("    accel biases (mg): "); Serial.print(1000.*accelBias[0]); Serial.print(" "); Serial.print(1000.*accelBias[1]); Serial.print(" "); Serial.println(1000.*accelBias[2]);
+	Serial.print("    gyro biases (dps): "); Serial.print(gyroBias[0]); Serial.print(" ");        Serial.print(gyroBias[1]); Serial.print(" ");        Serial.println(gyroBias[2]);
 
 	/* Initialize device for active mode read of
 	   accelerometer, gyroscope, and temperature. */
@@ -330,8 +265,8 @@ void setup(void)
 	Serial.println("AK8963 initialized for active data mode");
 
 	magCalMPU9250(magBias, magScale);
-	Serial.print("    mag biases (mG): "); Serial.print(magBias[0]); Serial.print(""); Serial.print(magBias[1]); Serial.print(""); Serial.println(magBias[2]);
-	Serial.print("    mag scale (mG): "); Serial.print(magScale[0]); Serial.print(""); Serial.print(magScale[1]); Serial.print(""); Serial.println(magScale[2]);
+	Serial.print("    mag biases (mG): "); Serial.print(magBias[0]); Serial.print(" "); Serial.print(magBias[1]); Serial.print(" "); Serial.println(magBias[2]);
+	Serial.print("    mag scale (mG): "); Serial.print(magScale[0]); Serial.print(" "); Serial.print(magScale[1]); Serial.print(" "); Serial.println(magScale[2]);
 
 	// Serial.println("Calibration values: ");
 	Serial.print("    x-axis sensitivity adjustment value: "); Serial.println(magCalibration[0], 2);
@@ -406,17 +341,16 @@ void loop(void)
 #if WITH_LOCAL_AHRS
 	/*
 	  Set integration time by time elapsed since last filter
-	  update.  'deltat' variable is used in both quaternion
-	  filters.
+	  update.
 	*/
 	const uint32_t filter_time_now = micros();
-	deltat = ((filter_time_now - filter_time_prev)/1000000.0f);
+	const float filter_time_delta = ((filter_time_now - filter_time_prev)/1000000.0f);
 	filter_time_prev = filter_time_now;
 
-	filter_time_sum += deltat; // sum for averaging filter update rate
+	filter_time_sum += filter_time_delta; // sum for averaging filter update rate
 	filter_time_sum_count++;
 
-	calculate_quaternions(g_meas);
+	calculate_quaternions(g_meas, filter_time_delta);
 #endif
 
 
@@ -429,20 +363,12 @@ void loop(void)
 
 
 #if WITH_LOCAL_AHRS
-		calculate_ahrs(q, g_meas, g_ahrs);
-
-		if (serial_debug_quaternion) {
-			debug_print_quaternion(q);
-		}
-		if (serial_debug_ypr) {
-			debug_print_ypr(g_ahrs);
-		}
-		if (serial_debug_other_ahrs) {
-			debug_print_other_ahrs(g_ahrs);
-		}
-		if (serial_debug_filter_rate) {
-			Serial.print("Filter rate = "); Serial.print((float) filter_time_sum_count/filter_time_sum, 2); Serial.println(" Hz");
-		}
+		/* We don't need to calculate g_ahrs in every read
+		   cycle, we can calculate it only in every display
+		   cycle. calculate_quaternions() is called in every
+		   read cycle and that's enough/necessary to keep
+		   filter up-to-date. */
+		calculate_ahrs(g_meas, g_ahrs, filter_time_sum_count/filter_time_sum);
 
 		filter_time_sum_count = 0;
 		filter_time_sum = 0;
@@ -993,4 +919,20 @@ void MPU9250SelfTest(float * destination)
 		destination[i]   = 100.0 * ((float) (aSTAvg[i] - aAvg[i]))/factoryTrim[i] - 100.0;   // Report percent differences
 		destination[i+3] = 100.0 * ((float) (gSTAvg[i] - gAvg[i]))/factoryTrim[i+3] - 100.0; // Report percent differences
 	}
+}
+
+
+
+
+void debug_print_meas(const mpu_meas_t & meas)
+{
+	Serial.print("ax = "); Serial.print((int) 1000 * meas.ax);
+	Serial.print(" ay = "); Serial.print((int) 1000 * meas.ay);
+	Serial.print(" az = "); Serial.print((int) 1000 * meas.az); Serial.print(" mg,");
+	Serial.print(" gx = "); Serial.print(meas.gx, 2);
+	Serial.print(" gy = "); Serial.print(meas.gy, 2);
+	Serial.print(" gz = "); Serial.print(meas.gz, 2); Serial.print(" deg/s,");
+	Serial.print(" mx = "); Serial.print((int) meas.mx);
+	Serial.print(" my = "); Serial.print((int) meas.my);
+	Serial.print(" mz = "); Serial.print((int) meas.mz); Serial.println(" mG");
 }
