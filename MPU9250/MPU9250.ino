@@ -48,6 +48,8 @@
 
 
 
+#include "MPU9250.h"
+#include "MPU9250_debug_print.h"
 #include "MPU9250_regs.h"
 #include "MPU9250_i2c.h"
 
@@ -154,9 +156,34 @@ float magScale[3]  = {0, 0, 0};
 /* Results of gyro and accelerometer self test. */
 float SelfTest[6];
 
-/* Raw temperature data read from chip. */
-int16_t raw_temp;
+/* Variable to hold latest sensor data values calculated from raw values. */
+mpu_meas_t g_meas;
 
+
+
+
+/*
+  With certain settings the filter is updating at a ~145 Hz rate using
+  the Madgwick scheme and >200 Hz using the Mahony.
+
+  The filter update rate is determined mostly by the mathematical
+  steps in the respective algorithms, the processor speed (8 MHz for
+  the 3.3V Pro Mini), and the magnetometer ODR: an ODR of 10 Hz for
+  the magnetometer produce the above rates, maximum magnetometer ODR
+  of 100 Hz produces filter update rates of 36 - 145 and ~38 Hz for
+  the Madgwick and Mahony schemes, respectively.
+
+  This is presumably because the magnetometer read takes longer than
+  the gyro or accelerometer reads.
+
+  This filter update rate should be fast enough to maintain accurate
+  platform orientation for stabilization control of a fast-moving
+  robot or quadcopter. Compare to the update rate of 200 Hz produced
+  by the on-board Digital Motion Processor of Invensense's MPU6050 6
+  DoF and MPU9150 9DoF sensors.
+
+  The 3.3 V 8 MHz Pro Mini is doing pretty well!
+*/
 
 /*
   Global constants for 9 DoF fusion and AHRS (Attitude and Heading
@@ -194,11 +221,6 @@ const float zeta = sqrt(3.0f / 4.0f) * GyroMeasDrift;   // compute zeta, the oth
 const float Kp = 2.0 * 5.0;
 const float Ki = 0.0;
 
-float pitch, yaw, roll;
-
-/* Rotation matrix coefficients for Euler angles and gravity components. */
-float a12, a22, a31, a32, a33;
-
 /* Integration interval for both filter schemes. */
 float deltat = 0.0f;
 
@@ -208,13 +230,8 @@ float filter_time_sum = 0.0f;
 uint32_t filter_time_sum_count = 0;
 uint32_t filter_time_prev = 0;
 
-/* Variables to hold latest sensor data values calculated from raw values. */
-float ax, ay, az;
-float gx, gy, gz;
-float mx, my, mz;
-
-/* Linear acceleration (acceleration with gravity component subtracted). */
-float lin_ax, lin_ay, lin_az;
+/* Variable to hold results of calculations made with quaternions. */
+mpu_calc_t g_calc;
 
 /* Quaternion. */
 float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};
@@ -343,21 +360,20 @@ void loop(void)
 
 
 		/* Convert the acceleration value into actual
-		   g's. This depends on scale being set. */
-		ax = (float) raw_agt[0] * aRes - accelBias[0];
-		ay = (float) raw_agt[1] * aRes - accelBias[1];
-		az = (float) raw_agt[2] * aRes - accelBias[2];
+		   meters per second^2. This depends on scale being set. */
+		g_meas.ax = (float) raw_agt[0] * aRes - accelBias[0];
+		g_meas.ay = (float) raw_agt[1] * aRes - accelBias[1];
+		g_meas.az = (float) raw_agt[2] * aRes - accelBias[2];
 
 
 		/* Convert the gyro value into actual degrees per
 		   second. This depends on scale being set. */
-		gx = (float) raw_agt[4] * gRes;
-		gy = (float) raw_agt[5] * gRes;
-		gz = (float) raw_agt[6] * gRes;
+		g_meas.gx = (float) raw_agt[4] * gRes;
+		g_meas.gy = (float) raw_agt[5] * gRes;
+		g_meas.gz = (float) raw_agt[6] * gRes;
 
 
-		/* Only save. Will be processed later. */
-		raw_temp = raw_agt[3];
+		g_meas.temperature = ((float) raw_agt[3]) / 333.87 + 21.0;
 
 
 		const uint8_t mag_data_ready = readMagData(raw_mag);
@@ -367,12 +383,12 @@ void loop(void)
 			   per data sheet and user environmental
 			   corrections. Calculated value depends on
 			   scale being set*/
-			mx = (float) raw_mag[0] * mRes * magCalibration[0] - magBias[0];
-			my = (float) raw_mag[1] * mRes * magCalibration[1] - magBias[1];
-			mz = (float) raw_mag[2] * mRes * magCalibration[2] - magBias[2];
-			mx *= magScale[0];
-			my *= magScale[1];
-			mz *= magScale[2];
+			g_meas.mx = (float) raw_mag[0] * mRes * magCalibration[0] - magBias[0];
+			g_meas.my = (float) raw_mag[1] * mRes * magCalibration[1] - magBias[1];
+			g_meas.mz = (float) raw_mag[2] * mRes * magCalibration[2] - magBias[2];
+			g_meas.mx *= magScale[0];
+			g_meas.my *= magScale[1];
+			g_meas.mz *= magScale[2];
 		}
 	}
 
@@ -415,47 +431,15 @@ void loop(void)
 	  Pass gyro rate as rad/s.
 	*/
 #if 0
-	MadgwickQuaternionUpdate(-ax, ay, az, gx*PI/180.0f, -gy*PI/180.0f, -gz*PI/180.0f,  my,  -mx, mz);
+	MadgwickQuaternionUpdate(-g_meas.ax, g_meas.ay, g_meas.az, g_meas.gx*PI/180.0f, -g_meas.gy*PI/180.0f, -g_meas.gz*PI/180.0f, g_meas.my, -g_meas.mx, g_meas.mz);
 #endif
 #if 0
-	if (true /* passThru */) {
-		MahonyQuaternionUpdate(-ax, ay, az, gx*PI/180.0f, -gy*PI/180.0f, -gz*PI/180.0f,  my,  -mx, mz);
-	}
+	MahonyQuaternionUpdate(-g_meas.ax, g_meas.ay, g_meas.az, g_meas.gx*PI/180.0f, -g_meas.gy*PI/180.0f, -g_meas.gz*PI/180.0f, g_meas.my, -g_meas.mx, g_meas.mz);
 #endif
 
 
 	const uint32_t display_time_now = millis();
 	if ((display_time_now - display_time_prev) > serial_debug_interval) {
-		if (serial_debug_meas) {
-			Serial.print("ax = "); Serial.print((int) 1000 * ax);
-			Serial.print(" ay = "); Serial.print((int) 1000 * ay);
-			Serial.print(" az = "); Serial.print((int) 1000 * az); Serial.print(" mg,");
-			Serial.print(" gx = "); Serial.print(gx, 2);
-			Serial.print(" gy = "); Serial.print(gy, 2);
-			Serial.print(" gz = "); Serial.print(gz, 2); Serial.print(" deg/s,");
-			Serial.print(" mx = "); Serial.print((int) mx);
-			Serial.print(" my = "); Serial.print((int) my);
-			Serial.print(" mz = "); Serial.print((int) mz); Serial.println(" mG");
-		}
-
-		if (serial_debug_quaternion) {
-			Serial.print("q0 = "); Serial.print(q[0]);
-			Serial.print(" qx = "); Serial.print(q[1]);
-			Serial.print(" qy = "); Serial.print(q[2]);
-			Serial.print(" qz = "); Serial.println(q[3]);
-		}
-
-
-
-		if (1) {
-			const float temperature = ((float) raw_temp) / 333.87 + 21.0;
-			if (serial_debug_temperature) {
-				Serial.print("Chip temperature is "); Serial.print(temperature, 3); Serial.println(" degrees C");
-			}
-		}
-
-
-
 		/*
 		  Define output variables from updated
 		  quaternion---these are Tait-Bryan angles, commonly
@@ -504,80 +488,44 @@ void loop(void)
 		   roll  *= 180.0f / PI;
 		*/
 
-		a12 =   2.0f * (q[1] * q[2] + q[0] * q[3]);
-		a22 =   q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3];
-		a31 =   2.0f * (q[0] * q[1] + q[2] * q[3]);
-		a32 =   2.0f * (q[1] * q[3] - q[0] * q[2]);
-		a33 =   q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3];
+		g_calc.a12 = 2.0f * (q[1] * q[2] + q[0] * q[3]);
+		g_calc.a22 = q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3];
+		g_calc.a31 = 2.0f * (q[0] * q[1] + q[2] * q[3]);
+		g_calc.a32 = 2.0f * (q[1] * q[3] - q[0] * q[2]);
+		g_calc.a33 = q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3];
 
-		pitch = -asinf(a32);
-		roll  = atan2f(a31, a33);
-		yaw   = atan2f(a12, a22);
-		pitch *= 180.0f / PI;
-		yaw   *= 180.0f / PI;
-		yaw   += local_declination;
-		if (yaw < 0) {
-			yaw += 360.0f; /* Ensure yaw stays between 0 and 360. */
+		g_calc.pitch = -asinf(g_calc.a32);
+		g_calc.roll  = atan2f(g_calc.a31, g_calc.a33);
+		g_calc.yaw   = atan2f(g_calc.a12, g_calc.a22);
+		g_calc.pitch *= 180.0f / PI;
+		g_calc.yaw   *= 180.0f / PI;
+		g_calc.yaw   += local_declination;
+		if (g_calc.yaw < 0) {
+			g_calc.yaw += 360.0f; /* Ensure yaw stays between 0 and 360. */
 		}
-		roll  *= 180.0f / PI;
+		g_calc.roll  *= 180.0f / PI;
 
-		lin_ax = ax + a31;
-		lin_ay = ay + a32;
-		lin_az = az - a33;
+		g_calc.lin_ax = g_meas.ax + g_calc.a31;
+		g_calc.lin_ay = g_meas.ay + g_calc.a32;
+		g_calc.lin_az = g_meas.az - g_calc.a33;
 
+
+		if (serial_debug_meas) {
+			debug_print_meas(g_meas);
+		}
+		if (serial_debug_quaternion) {
+			debug_print_quaternion(q);
+		}
+		if (serial_debug_temperature) {
+			Serial.print("Chip temperature is "); Serial.print(g_meas.temperature, 3); Serial.println(" degrees C");
+		}
 		if (serial_debug_ypr) {
-			Serial.print("Yaw, Pitch, Roll: ");
-			Serial.print(yaw, 2);
-			Serial.print(", ");
-			Serial.print(pitch, 2);
-			Serial.print(", ");
-			Serial.println(roll, 2);
+			debug_print_ypr(g_calc);
 		}
-
 		if (serial_debug_other) {
-			Serial.print("Grav_x, Grav_y, Grav_z: ");
-			Serial.print(-a31 * 1000, 2);
-			Serial.print(", ");
-			Serial.print(-a32 * 1000, 2);
-			Serial.print(", ");
-			Serial.print(a33 * 1000, 2);  Serial.println(" mg");
-			Serial.print("Lin_ax, Lin_ay, Lin_az: ");
-			Serial.print(lin_ax * 1000, 2);
-			Serial.print(", ");
-			Serial.print(lin_ay * 1000, 2);
-			Serial.print(", ");
-			Serial.print(lin_az * 1000, 2);  Serial.println(" mg");
-
+			debug_print_other(g_calc);
 			Serial.print("rate = "); Serial.print((float) filter_time_sum_count/filter_time_sum, 2); Serial.println(" Hz");
 		}
-
-		/*
-		  With these settings the filter is updating at a ~145
-		  Hz rate using the Madgwick scheme and >200 Hz using
-		  the Mahony scheme even though the display refreshes
-		  at only 2 Hz.
-
-		  The filter update rate is determined mostly by the
-		  mathematical steps in the respective algorithms, the
-		  processor speed (8 MHz for the 3.3V Pro Mini), and
-		  the magnetometer ODR: an ODR of 10 Hz for the
-		  magnetometer produce the above rates, maximum
-		  magnetometer ODR of 100 Hz produces filter update
-		  rates of 36 - 145 and ~38 Hz for the Madgwick and
-		  Mahony schemes, respectively.
-
-		  This is presumably because the magnetometer read
-		  takes longer than the gyro or accelerometer reads.
-
-		  This filter update rate should be fast enough to
-		  maintain accurate platform orientation for
-		  stabilization control of a fast-moving robot or
-		  quadcopter. Compare to the update rate of 200 Hz
-		  produced by the on-board Digital Motion Processor of
-		  Invensense's MPU6050 6 DoF and MPU9150 9DoF sensors.
-
-		  The 3.3 V 8 MHz Pro Mini is doing pretty well!
-		*/
 
 		digitalWrite(ledPin, !digitalRead(ledPin));
 		display_time_prev = millis();
