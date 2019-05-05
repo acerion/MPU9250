@@ -50,6 +50,7 @@
 
 #include "MPU9250.h"
 #include "MPU9250_debug_print.h"
+#include "MPU9250_ahrs.h"
 #include "MPU9250_regs.h"
 #include "MPU9250_i2c.h"
 
@@ -88,12 +89,6 @@ const bool serial_debug_quaternion = true;  /* Show quaternions on serial line. 
 const bool serial_debug_ypr = true;          /* Show yaw/pitch/roll on serial line. */
 const bool serial_debug_temperature = true; /* Show temperature on serial line. */
 const bool serial_debug_other = true;       /* Show other information on serial line. */
-
-
-
-
-// Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
-const float local_declination = 13.8;
 
 
 
@@ -233,8 +228,7 @@ uint32_t filter_time_prev = 0;
 /* Variable to hold results of calculations made with quaternions. */
 mpu_calc_t g_calc;
 
-/* Quaternion. */
-float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+extern float q[4];
 
 /* Integral error for Mahony method. */
 float eInt[3] = {0.0f, 0.0f, 0.0f};

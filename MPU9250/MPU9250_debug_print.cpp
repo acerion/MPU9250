@@ -9,9 +9,15 @@
 */
 
 
+
+
+#include <Arduino.h> /* For 'Serial'. */
+
+
+
+
 #include "MPU9250.h"
 #include "MPU9250_debug_print.h"
-
 
 
 
@@ -45,12 +51,12 @@ void debug_print_ypr(const mpu_calc_t & calc)
 
 
 
-void debug_print_quaternion(const float * a_q)
+void debug_print_quaternion(const float * quat)
 {
-	Serial.print("q0 = "); Serial.print(q[0]);
-	Serial.print(" qx = "); Serial.print(q[1]);
-	Serial.print(" qy = "); Serial.print(q[2]);
-	Serial.print(" qz = "); Serial.println(q[3]);
+	Serial.print("q0 = "); Serial.print(quat[0]);
+	Serial.print(" qx = "); Serial.print(quat[1]);
+	Serial.print(" qy = "); Serial.print(quat[2]);
+	Serial.print(" qz = "); Serial.println(quat[3]);
 }
 
 

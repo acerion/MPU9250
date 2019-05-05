@@ -11,7 +11,27 @@
 
 
 
+#include <math.h>
+
+
+
+
 #include "MPU9250_ahrs.h"
+
+
+
+
+void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz);
+void MahonyQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz);
+
+
+
+
+// Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
+const float local_declination = 13.8;
+
+/* Quaternion. */
+float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 
 
 
@@ -43,10 +63,10 @@ void calculate_quaternions(mpu_meas_t & meas)
 	  Pass gyro rate as rad/s.
 	*/
 #if 0
-	MadgwickQuaternionUpdate(-meas.ax, meas.ay, meas.az, meas.gx*PI/180.0f, -meas.gy*PI/180.0f, -meas.gz*PI/180.0f, meas.my, -meas.mx, meas.mz);
+	MadgwickQuaternionUpdate(-meas.ax, meas.ay, meas.az, meas.gx*M_PI/180.0f, -meas.gy*M_PI/180.0f, -meas.gz*M_PI/180.0f, meas.my, -meas.mx, meas.mz);
 #endif
 #if 0
-	MahonyQuaternionUpdate(-meas.ax, meas.ay, meas.az, meas.gx*PI/180.0f, -meas.gy*PI/180.0f, -meas.gz*PI/180.0f, meas.my, -meas.mx, meas.mz);
+	MahonyQuaternionUpdate(-meas.ax, meas.ay, meas.az, meas.gx*M_PI/180.0f, -meas.gy*M_PI/180.0f, -meas.gz*M_PI/180.0f, meas.my, -meas.mx, meas.mz);
 #endif
 }
 
@@ -112,13 +132,13 @@ void calculate_from_quaternions(mpu_calc_t & calc, mpu_meas_t & meas)
 	calc.pitch = -asinf(calc.a32);
 	calc.roll  = atan2f(calc.a31, calc.a33);
 	calc.yaw   = atan2f(calc.a12, calc.a22);
-	calc.pitch *= 180.0f / PI;
-	calc.yaw   *= 180.0f / PI;
+	calc.pitch *= 180.0f / M_PI;
+	calc.yaw   *= 180.0f / M_PI;
 	calc.yaw   += local_declination;
 	if (calc.yaw < 0) {
 		calc.yaw += 360.0f; /* Ensure yaw stays between 0 and 360. */
 	}
-	calc.roll  *= 180.0f / PI;
+	calc.roll  *= 180.0f / M_PI;
 
 	calc.lin_ax = meas.ax + calc.a31;
 	calc.lin_ay = meas.ay + calc.a32;
