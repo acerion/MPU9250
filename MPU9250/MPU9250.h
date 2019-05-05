@@ -17,44 +17,49 @@
 
 
 
+/* Do we want temperature measurements from MPU chip? They are not
+   essential to IMU operations, so we may want to disable them. */
+#define WITH_TEMPERATURE    1
+
+
+/* Do we want local calculations of quaternions and yaw/pitch/roll? */
+#define WITH_LOCAL_AHRS     1
+#if WITH_LOCAL_AHRS
+#define PICK_MADGWICK       1   /* 1 = Madgwick; 0 = Mahony. */
+#endif
+
+
+/* Do we want to send measurement results to PC over serial? */
+#define WITH_MEAS_TO_PC     1
+
+
+
+
+/* Sensor data values calculated from raw values. */
 typedef struct {
-	/* Sensor data values calculated from raw values. */
+	/* Acceleration. */
 	float ax;
 	float ay;
 	float az;
 
+	/* Gyro. */
 	float gx;
 	float gy;
 	float gz;
 
+	/* Mag. */
 	float mx;
 	float my;
 	float mz;
 
+	/* In theory we should enable/disable this field based on
+	   value of WITH_TEMPERATURE, but since this struct will may
+	   be sent to PC, let's keep number of its member constant for
+	   easier maintenance and interoperability. */
 	float temperature;
 } mpu_meas_t;
 
 
-
-
-typedef struct {
-	float pitch;
-	float yaw;
-	float roll;
-
-	/* Rotation matrix coefficients for Euler angles and gravity components. */
-	float a12;
-	float a22;
-	float a31;
-	float a32;
-	float a33;
-
-	/* Linear acceleration (acceleration with gravity component subtracted). */
-	float lin_ax;
-	float lin_ay;
-	float lin_az;
-
-} mpu_calc_t;
 
 
 #endif /* #ifndef _MPU9250_H_ */

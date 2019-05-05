@@ -85,10 +85,15 @@ const uint32_t serial_baud_rate = 115200;
 const int serial_debug_interval = 100;
 
 const bool serial_debug_meas = true;        /* Show accel, gyro, mag measurements on serial line. */
+#if WITH_LOCAL_AHRS
 const bool serial_debug_quaternion = true;  /* Show quaternions on serial line. */
-const bool serial_debug_ypr = true;          /* Show yaw/pitch/roll on serial line. */
+const bool serial_debug_ypr = true;          /* Show calculated basic ARHS values (yaw/pitch/roll) on serial line. */
+const bool serial_debug_other_ahrs = true;   /* Show other calculated AHRS values on serial line. */
+const bool serial_debug_filter_rate = true;  /* Show filter rate on serial line. */
+#endif
+#if WITH_TEMPERATURE
 const bool serial_debug_temperature = true; /* Show temperature on serial line. */
-const bool serial_debug_other = true;       /* Show other information on serial line. */
+#endif
 
 
 
@@ -133,9 +138,7 @@ float aRes, gRes, mRes;      // scale resolutions per LSB for the sensors
 const int intPin = 8;
 const int ledPin = 13;
 
-
 volatile bool newData = false;
-
 
 int16_t raw_agt[7]; /* Raw data from accelerometer (values 0-2), gyroscope (4-6) and temperature (3) sensor. */
 int16_t raw_mag[3]; /* Raw data from magnetometer. */
@@ -146,13 +149,16 @@ float gyroBias[3] = {0, 0, 0};
 float accelBias[3] = {0, 0, 0};
 
 float magBias[3] = {0, 0, 0};
-float magScale[3]  = {0, 0, 0};
+float magScale[3] = {0, 0, 0};
 
 /* Results of gyro and accelerometer self test. */
 float SelfTest[6];
 
 /* Variable to hold latest sensor data values calculated from raw values. */
 mpu_meas_t g_meas;
+
+/* Used to control rate of displaying data on serial port. */
+uint32_t display_time_prev = 0;
 
 
 
@@ -226,15 +232,12 @@ uint32_t filter_time_sum_count = 0;
 uint32_t filter_time_prev = 0;
 
 /* Variable to hold results of calculations made with quaternions. */
-mpu_calc_t g_calc;
+mpu_ahrs_t g_ahrs;
 
 extern float q[4];
 
 /* Integral error for Mahony method. */
 float eInt[3] = {0.0f, 0.0f, 0.0f};
-
-/* Used to control rate of displaying data on serial port. */
-uint32_t display_time_prev = 0;
 
 
 
@@ -248,7 +251,8 @@ void initAK8963(float * destination);
 void myinthandler(void);
 
 void readMPU9250Data(int16_t * destination);
-uint8_t readMagData(int16_t * destination);
+/* Returns true if new Magnetometer data has been read into @destination. */
+bool readMagData(int16_t * destination);
 
 void MPU9250SelfTest(float * destination);
 void accelGyroCalMPU9250(float * dest_g_bias, float * dest_a_bias);
@@ -262,8 +266,9 @@ void setup(void)
 	Wire.begin();
 	// TWBR = 12;  // 400 kbit/sec I2C speed for Pro Mini
 	Serial.begin(serial_baud_rate);
+	delay(1000);
 	Serial.println("\n\nMicrocontroller is online\n");
-	delay(4000);
+	delay(3000);
 
 	// Set up the interrupt pin, its set as active high, push-pull
 	pinMode(intPin, INPUT);
@@ -273,71 +278,80 @@ void setup(void)
 
 	/* Read the WHO_AM_I register, this is a good test of communication. */
 	byte who = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
-	if (who == 0x71) {
-		Serial.println("Accel/gyro is online\n");
-
-		/* Start by performing self test and reporting values. */
-		MPU9250SelfTest(SelfTest);
-		Serial.print("x-axis self test: acceleration trim within "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
-		Serial.print("y-axis self test: acceleration trim within "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
-		Serial.print("z-axis self test: acceleration trim within "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
-		Serial.print("x-axis self test: gyration trim within "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
-		Serial.print("y-axis self test: gyration trim within "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
-		Serial.print("z-axis self test: gyration trim within "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
-		Serial.print("\n");
-		delay(1000);
-
-		/* Configure sensor resolutions, only need to do this once. */
-		setAres();
-		setGres();
-		setMres();
-
-		/* Calibrate gyro and accelerometers, load biases in
-		   bias registers. */
-		Serial.println("Calibrate gyro and accel");
-		accelGyroCalMPU9250(gyroBias, accelBias);
-		Serial.println("accel biases (mg)"); Serial.println(1000.*accelBias[0]); Serial.println(1000.*accelBias[1]); Serial.println(1000.*accelBias[2]);
-		Serial.println("gyro biases (dps)"); Serial.println(gyroBias[0]); Serial.println(gyroBias[1]); Serial.println(gyroBias[2]);
-
-		/* Initialize device for active mode read of
-		   accelerometer, gyroscope, and temperature. */
-		initMPU9250();
-		Serial.println("MPU9250 initialized for active data mode\n");
-
-
-
-		/* Read the WHO_AM_I register of the magnetometer,
-		   this is a good test of communication. */
-		who = readByte(AK8963_ADDRESS, AK8963_WHO_AM_I);
-		Serial.print("AK8963 magnetometer, "); Serial.print("I AM 0x"); Serial.print(who, HEX); Serial.print(" I should be 0x"); Serial.println(0x48, HEX);
-
-		/* Get magnetometer calibration from AK8963 ROM. */
-		/* Initialize device for active mode read of magnetometer. */
-		initAK8963(magCalibration);
-		Serial.println("AK8963 initialized for active data mode");
-
-		magCalMPU9250(magBias, magScale);
-		Serial.println("AK8963 mag biases (mG)"); Serial.println(magBias[0]); Serial.println(magBias[1]); Serial.println(magBias[2]);
-		Serial.println("AK8963 mag scale (mG)"); Serial.println(magScale[0]); Serial.println(magScale[1]); Serial.println(magScale[2]);
-
-		// Serial.println("Calibration values: ");
-		Serial.print("X-Axis sensitivity adjustment value "); Serial.println(magCalibration[0], 2);
-		Serial.print("Y-Axis sensitivity adjustment value "); Serial.println(magCalibration[1], 2);
-		Serial.print("Z-Axis sensitivity adjustment value "); Serial.println(magCalibration[2], 2);
-		Serial.print("\n");
-
-
-
-		/* Add delay to see results before serial spew of data. */
-		delay(2000);
-
-		/* Define interrupt for INT pin output of MPU9250. */
-		attachInterrupt(intPin, myinthandler, RISING);
-	} else {
+	if (who != 0x71) {
 		Serial.print("Could not connect to accel/gyro :"); Serial.print("I AM 0x"); Serial.print(who, HEX); Serial.print(" I should be 0x"); Serial.println(0x71, HEX);
-		while (1) {
-			; /* Loop forever if communication doesn't happen. */
-		}
+		goto on_error;
+	}
+	Serial.println("Accel/gyro is online\n");
+
+	/* Start by performing self test and reporting values. */
+	MPU9250SelfTest(SelfTest);
+	Serial.printnl("Accel/gyro self test:");
+	Serial.print("    x-axis: acceleration trim within "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
+	Serial.print("    y-axis: acceleration trim within "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
+	Serial.print("    z-axis: acceleration trim within "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
+	Serial.print("    x-axis: gyration trim within "); Serial.print(SelfTest[3],1); Serial.println("% of factory value");
+	Serial.print("    y-axis: gyration trim within "); Serial.print(SelfTest[4],1); Serial.println("% of factory value");
+	Serial.print("    z-axis: gyration trim within "); Serial.print(SelfTest[5],1); Serial.println("% of factory value");
+	Serial.print("\n");
+	delay(1000);
+
+	/* Configure sensor resolutions, only need to do this once. */
+	setAres();
+	setGres();
+	setMres();
+
+	/* Calibrate gyro and accelerometers, load biases in bias
+	   registers. */
+	Serial.println("Calibrate gyro and accel");
+	accelGyroCalMPU9250(gyroBias, accelBias);
+	Serial.print("    accel biases (mg): "); Serial.print(1000.*accelBias[0]); Serial.print(""); Serial.print(1000.*accelBias[1]); Serial.print(""); Serial.println(1000.*accelBias[2]);
+	Serial.print("    gyro biases (dps): "); Serial.print(gyroBias[0]); Serial.print("");        Serial.print(gyroBias[1]); Serial.print("");        Serial.println(gyroBias[2]);
+
+	/* Initialize device for active mode read of
+	   accelerometer, gyroscope, and temperature. */
+	initMPU9250();
+	Serial.println("\nMPU9250 initialized for active data mode\n");
+
+
+
+	/* Read the WHO_AM_I register of the magnetometer,
+	   this is a good test of communication. */
+	who = readByte(AK8963_ADDRESS, AK8963_WHO_AM_I);
+	if (who != 0x48) {
+		Serial.print("Could not connect to magnetometer :"); Serial.print("I AM 0x"); Serial.print(who, HEX); Serial.print(" I should be 0x"); Serial.println(0x48, HEX);
+		goto on_error;
+	}
+	Serial.println("Magnetometer is online\n");
+
+	/* Get magnetometer calibration from AK8963 ROM. */
+	/* Initialize device for active mode read of magnetometer. */
+	initAK8963(magCalibration);
+	Serial.println("AK8963 initialized for active data mode");
+
+	magCalMPU9250(magBias, magScale);
+	Serial.print("    mag biases (mG): "); Serial.print(magBias[0]); Serial.print(""); Serial.print(magBias[1]); Serial.print(""); Serial.println(magBias[2]);
+	Serial.print("    mag scale (mG): "); Serial.print(magScale[0]); Serial.print(""); Serial.print(magScale[1]); Serial.print(""); Serial.println(magScale[2]);
+
+	// Serial.println("Calibration values: ");
+	Serial.print("    x-axis sensitivity adjustment value: "); Serial.println(magCalibration[0], 2);
+	Serial.print("    y-axis sensitivity adjustment value: "); Serial.println(magCalibration[1], 2);
+	Serial.print("    z-axis sensitivity adjustment value: "); Serial.println(magCalibration[2], 2);
+	Serial.print("\n");
+
+
+
+	/* Add delay to see results before serial spew of data. */
+	delay(1000);
+
+	/* Define interrupt for INT pin output of MPU9250. */
+	attachInterrupt(intPin, myinthandler, RISING);
+
+	return;
+
+ on_error:
+	while (1) {
+		; /* Loop forever on errors. */
 	}
 }
 
@@ -367,11 +381,13 @@ void loop(void)
 		g_meas.gz = (float) raw_agt[6] * gRes;
 
 
+#if WITH_TEMPERATURE
 		g_meas.temperature = ((float) raw_agt[3]) / 333.87 + 21.0;
+#endif
 
 
-		const uint8_t mag_data_ready = readMagData(raw_mag);
-		if (mag_data_ready) {
+		const bool new_mag_data_ready = readMagData(raw_mag);
+		if (new_mag_data_ready) {
 			/* Calculate the magnetometer values in
 			   milliGauss.  Include factory calibration
 			   per data sheet and user environmental
@@ -387,6 +403,7 @@ void loop(void)
 	}
 
 
+#if WITH_LOCAL_AHRS
 	/*
 	  Set integration time by time elapsed since last filter
 	  update.  'deltat' variable is used in both quaternion
@@ -399,39 +416,48 @@ void loop(void)
 	filter_time_sum += deltat; // sum for averaging filter update rate
 	filter_time_sum_count++;
 
-
 	calculate_quaternions(g_meas);
+#endif
 
 
 	const uint32_t display_time_now = millis();
 	if ((display_time_now - display_time_prev) > serial_debug_interval) {
 
-
-		calculate_from_quaternions(g_calc, g_meas);
-
-
 		if (serial_debug_meas) {
 			debug_print_meas(g_meas);
 		}
+
+
+#if WITH_LOCAL_AHRS
+		calculate_ahrs(q, g_meas, g_ahrs);
+
 		if (serial_debug_quaternion) {
 			debug_print_quaternion(q);
 		}
-		if (serial_debug_temperature) {
-			Serial.print("Chip temperature is "); Serial.print(g_meas.temperature, 3); Serial.println(" degrees C");
-		}
 		if (serial_debug_ypr) {
-			debug_print_ypr(g_calc);
+			debug_print_ypr(g_ahrs);
 		}
-		if (serial_debug_other) {
-			debug_print_other(g_calc);
-			Serial.print("rate = "); Serial.print((float) filter_time_sum_count/filter_time_sum, 2); Serial.println(" Hz");
+		if (serial_debug_other_ahrs) {
+			debug_print_other_ahrs(g_ahrs);
 		}
-
-		digitalWrite(ledPin, !digitalRead(ledPin));
-		display_time_prev = millis();
+		if (serial_debug_filter_rate) {
+			Serial.print("Filter rate = "); Serial.print((float) filter_time_sum_count/filter_time_sum, 2); Serial.println(" Hz");
+		}
 
 		filter_time_sum_count = 0;
 		filter_time_sum = 0;
+#endif
+
+
+#if WITH_TEMPERATURE
+		if (serial_debug_temperature) {
+			Serial.print("Chip temperature is "); Serial.print(g_meas.temperature, 3); Serial.println(" degrees C");
+		}
+#endif
+
+
+		digitalWrite(ledPin, !digitalRead(ledPin));
+		display_time_prev = millis();
 	}
 }
 
@@ -512,7 +538,9 @@ void readMPU9250Data(int16_t * destination)
 	destination[0] = ((int16_t)rawData[0] << 8) | rawData[1];
 	destination[1] = ((int16_t)rawData[2] << 8) | rawData[3];
 	destination[2] = ((int16_t)rawData[4] << 8) | rawData[5];
+#if WITH_TEMPERATURE
 	destination[3] = ((int16_t)rawData[6] << 8) | rawData[7]; /* Temperature. */
+#endif
 	destination[4] = ((int16_t)rawData[8] << 8) | rawData[9];
 	destination[5] = ((int16_t)rawData[10] << 8) | rawData[11];
 	destination[6] = ((int16_t)rawData[12] << 8) | rawData[13];
@@ -521,13 +549,13 @@ void readMPU9250Data(int16_t * destination)
 
 
 
-uint8_t readMagData(int16_t * destination)
+bool readMagData(int16_t * destination)
 {
 	uint8_t rawData[7];  // x/y/z gyro register data, ST2 register stored here, must read ST2 at end of data acquisition
 	const uint8_t ready = (readByte(AK8963_ADDRESS, AK8963_ST1) & 0x01);
 	if (ready) { // wait for magnetometer data ready bit to be set
 		readBytes(AK8963_ADDRESS, AK8963_XOUT_L, 7, &rawData[0]);  // Read the six raw data and ST2 registers sequentially into data array
-		uint8_t c = rawData[6]; // End data read by reading ST2 register
+		const uint8_t c = rawData[6]; // End data read by reading ST2 register
 		if (!(c & 0x08)) { // Check if magnetic sensor overflow set, if not then report data
 			destination[0] = ((int16_t)rawData[1] << 8) | rawData[0];  // Turn the MSB and LSB into a signed 16-bit value
 			destination[1] = ((int16_t)rawData[3] << 8) | rawData[2];  // Data stored as little Endian
@@ -535,7 +563,7 @@ uint8_t readMagData(int16_t * destination)
 		}
 	}
 
-	return ready;
+	return (bool) ready;
 }
 
 

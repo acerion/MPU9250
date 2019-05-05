@@ -38,14 +38,15 @@ void debug_print_meas(const mpu_meas_t & meas)
 
 
 
-void debug_print_ypr(const mpu_calc_t & calc)
+#if WITH_LOCAL_AHRS
+void debug_print_ypr(const mpu_ahrs_t & ahrs)
 {
 	Serial.print("Yaw, Pitch, Roll: ");
-	Serial.print(calc.yaw, 2);
+	Serial.print(ahrs.yaw, 2);
 	Serial.print(", ");
-	Serial.print(calc.pitch, 2);
+	Serial.print(ahrs.pitch, 2);
 	Serial.print(", ");
-	Serial.println(calc.roll, 2);
+	Serial.println(ahrs.roll, 2);
 }
 
 
@@ -62,18 +63,20 @@ void debug_print_quaternion(const float * quat)
 
 
 
-void debug_print_other(const mpu_calc_t & calc)
+void debug_print_other_ahrs(const mpu_ahrs_t & ahrs)
 {
 	Serial.print("Grav_x, Grav_y, Grav_z: ");
-	Serial.print(-calc.a31 * 1000, 2);
+	Serial.print(-ahrs.a31 * 1000, 2);
 	Serial.print(", ");
-	Serial.print(-calc.a32 * 1000, 2);
+	Serial.print(-ahrs.a32 * 1000, 2);
 	Serial.print(", ");
-	Serial.print(calc.a33 * 1000, 2);  Serial.println(" mg");
+	Serial.print(ahrs.a33 * 1000, 2);  Serial.println(" mg");
 	Serial.print("Lin_ax, Lin_ay, Lin_az: ");
-	Serial.print(calc.lin_ax * 1000, 2);
+	Serial.print(ahrs.lin_ax * 1000, 2);
 	Serial.print(", ");
-	Serial.print(calc.lin_ay * 1000, 2);
+	Serial.print(ahrs.lin_ay * 1000, 2);
 	Serial.print(", ");
-	Serial.print(calc.lin_az * 1000, 2);  Serial.println(" mg");
+	Serial.print(ahrs.lin_az * 1000, 2);  Serial.println(" mg");
 }
+
+#endif /* #if WITH_LOCAL_AHRS */

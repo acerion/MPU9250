@@ -17,14 +17,18 @@
 
 
 #include "MPU9250.h"
+#include "MPU9250_ahrs.h"
 
 
 
 
 void debug_print_meas(const mpu_meas_t & meas);
-void debug_print_ypr(const mpu_calc_t & calc);
+#if WITH_LOCAL_AHRS
 void debug_print_quaternion(const float * q);
-void debug_print_other(const mpu_calc_t & calc);
+void debug_print_ypr(const mpu_ahrs_t & ahrs);
+void debug_print_other_ahrs(const mpu_ahrs_t & ahrs);
+#endif
+
 
 
 

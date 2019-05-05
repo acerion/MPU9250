@@ -22,8 +22,40 @@
 
 
 
+#if WITH_LOCAL_AHRS
+
+
+
+
+typedef struct {
+	float yaw;
+	float pitch;
+	float roll;
+
+	/* Rotation matrix coefficients for Euler angles and gravity components. */
+	float a12;
+	float a22;
+	float a31;
+	float a32;
+	float a33;
+
+	/* Linear acceleration (acceleration with gravity component subtracted). */
+	float lin_ax;
+	float lin_ay;
+	float lin_az;
+} mpu_ahrs_t;
+
+
+
+
+/* Wrapper around functions from quaternionFilters.ino.
+   The functions put results in global 'float q[4]' variable. */
 void calculate_quaternions(mpu_meas_t & meas);
-void calculate_from_quaternions(mpu_calc_t & calc, mpu_meas_t & meas);
+
+/* Use quaternions from @quat and @meas to calculate AHRS data and put it in @ahrs. */
+void calculate_ahrs(const float * quat, const mpu_meas_t & meas, mpu_ahrs_t & ahrs);
+
+#endif /* #if WITH_LOCAL_AHRS */
 
 
 

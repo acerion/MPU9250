@@ -21,6 +21,8 @@
 
 
 
+#if WITH_LOCAL_AHRS
+
 void MadgwickQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz);
 void MahonyQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz);
 
@@ -28,7 +30,7 @@ void MahonyQuaternionUpdate(float ax, float ay, float az, float gx, float gy, fl
 
 
 // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
-const float local_declination = 13.8;
+static const float local_declination = 13.8;
 
 /* Quaternion. */
 float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};
@@ -62,18 +64,19 @@ void calculate_quaternions(mpu_meas_t & meas)
 
 	  Pass gyro rate as rad/s.
 	*/
-#if 0
+#if WITH_LOCAL_AHRS
+#if PICK_MADGWICK
 	MadgwickQuaternionUpdate(-meas.ax, meas.ay, meas.az, meas.gx*M_PI/180.0f, -meas.gy*M_PI/180.0f, -meas.gz*M_PI/180.0f, meas.my, -meas.mx, meas.mz);
-#endif
-#if 0
+#else
 	MahonyQuaternionUpdate(-meas.ax, meas.ay, meas.az, meas.gx*M_PI/180.0f, -meas.gy*M_PI/180.0f, -meas.gz*M_PI/180.0f, meas.my, -meas.mx, meas.mz);
+#endif
 #endif
 }
 
 
 
 
-void calculate_from_quaternions(mpu_calc_t & calc, mpu_meas_t & meas)
+void calculate_ahrs(const float * quat, const mpu_meas_t & meas, mpu_ahrs_t & ahrs)
 {
 	/*
 	  Define output variables from updated
@@ -123,24 +126,26 @@ void calculate_from_quaternions(mpu_calc_t & calc, mpu_meas_t & meas)
 	  roll  *= 180.0f / PI;
 	*/
 
-	calc.a12 = 2.0f * (q[1] * q[2] + q[0] * q[3]);
-	calc.a22 = q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3];
-	calc.a31 = 2.0f * (q[0] * q[1] + q[2] * q[3]);
-	calc.a32 = 2.0f * (q[1] * q[3] - q[0] * q[2]);
-	calc.a33 = q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3];
+	ahrs.a12 = 2.0f * (quat[1] * quat[2] + quat[0] * quat[3]);
+	ahrs.a22 = quat[0] * quat[0] + quat[1] * quat[1] - quat[2] * quat[2] - quat[3] * quat[3];
+	ahrs.a31 = 2.0f * (quat[0] * quat[1] + quat[2] * quat[3]);
+	ahrs.a32 = 2.0f * (quat[1] * quat[3] - quat[0] * quat[2]);
+	ahrs.a33 = quat[0] * quat[0] - quat[1] * quat[1] - quat[2] * quat[2] + quat[3] * quat[3];
 
-	calc.pitch = -asinf(calc.a32);
-	calc.roll  = atan2f(calc.a31, calc.a33);
-	calc.yaw   = atan2f(calc.a12, calc.a22);
-	calc.pitch *= 180.0f / M_PI;
-	calc.yaw   *= 180.0f / M_PI;
-	calc.yaw   += local_declination;
-	if (calc.yaw < 0) {
-		calc.yaw += 360.0f; /* Ensure yaw stays between 0 and 360. */
+	ahrs.pitch = -asinf(ahrs.a32);
+	ahrs.roll  = atan2f(ahrs.a31, ahrs.a33);
+	ahrs.yaw   = atan2f(ahrs.a12, ahrs.a22);
+	ahrs.pitch *= 180.0f / M_PI;
+	ahrs.yaw   *= 180.0f / M_PI;
+	ahrs.yaw   += local_declination;
+	if (ahrs.yaw < 0) {
+		ahrs.yaw += 360.0f; /* Ensure yaw stays between 0 and 360. */
 	}
-	calc.roll  *= 180.0f / M_PI;
+	ahrs.roll  *= 180.0f / M_PI;
 
-	calc.lin_ax = meas.ax + calc.a31;
-	calc.lin_ay = meas.ay + calc.a32;
-	calc.lin_az = meas.az - calc.a33;
+	ahrs.lin_ax = meas.ax + ahrs.a31;
+	ahrs.lin_ay = meas.ay + ahrs.a32;
+	ahrs.lin_az = meas.az - ahrs.a33;
 }
+
+#endif /* #if WITH_LOCAL_AHRS */
