@@ -286,7 +286,7 @@ void setup(void)
 
 	/* Start by performing self test and reporting values. */
 	MPU9250SelfTest(SelfTest);
-	Serial.printnl("Accel/gyro self test:");
+	Serial.println("Accel/gyro self test:");
 	Serial.print("    x-axis: acceleration trim within "); Serial.print(SelfTest[0],1); Serial.println("% of factory value");
 	Serial.print("    y-axis: acceleration trim within "); Serial.print(SelfTest[1],1); Serial.println("% of factory value");
 	Serial.print("    z-axis: acceleration trim within "); Serial.print(SelfTest[2],1); Serial.println("% of factory value");
