@@ -353,6 +353,8 @@ void loop(void)
 	calculate_quaternions(g_meas, filter_time_delta);
 #endif
 
+	send_to_pc(g_meas);
+
 
 	const uint32_t display_time_now = millis();
 	if ((display_time_now - display_time_prev) > serial_debug_interval) {
@@ -935,4 +937,37 @@ void debug_print_meas(const mpu_meas_t & meas)
 	Serial.print(" mx = "); Serial.print((int) meas.mx);
 	Serial.print(" my = "); Serial.print((int) meas.my);
 	Serial.print(" mz = "); Serial.print((int) meas.mz); Serial.println(" mG");
+}
+
+
+
+
+#define SEND_FLOAT(_X_)							\
+	do {								\
+		const uint8_t * b = (const uint8_t *) &(_X_);		\
+		Serial.write(b, 4);					\
+	} while (0)
+
+
+void send_to_pc(mpu_meas_t & meas)
+{
+	const uint8_t header[6] = { 0x17, 0x6b, 0x61, 0x6d, 0x69, 0x6c };
+	Serial.write(header, 6);
+
+	float a;
+
+	a = 1000.0 * meas.ax;
+	SEND_FLOAT(a);
+	a = 1000.0 * meas.ay;
+	SEND_FLOAT(a);
+	a = 1000.0 * meas.az;
+	SEND_FLOAT(a);
+
+	SEND_FLOAT(meas.gx);
+	SEND_FLOAT(meas.gy);
+	SEND_FLOAT(meas.gz);
+
+	SEND_FLOAT(meas.mx);
+	SEND_FLOAT(meas.my);
+	SEND_FLOAT(meas.mz);
 }
