@@ -193,6 +193,10 @@ void magCalMPU9250(float * dest_bias, float * dest_scale);
 
 void debug_print_meas(const mpu_meas_t & meas);
 
+#if WITH_DATA_TO_PC
+void send_to_pc(mpu_meas_t & meas);
+#endif
+
 
 
 
@@ -335,6 +339,10 @@ void loop(void)
 			g_meas.my *= magScale[1];
 			g_meas.mz *= magScale[2];
 		}
+
+#if WITH_DATA_TO_PC
+	send_to_pc(g_meas);
+#endif
 	}
 
 
@@ -353,7 +361,6 @@ void loop(void)
 	calculate_quaternions(g_meas, filter_time_delta);
 #endif
 
-	send_to_pc(g_meas);
 
 
 	const uint32_t display_time_now = millis();
@@ -942,32 +949,26 @@ void debug_print_meas(const mpu_meas_t & meas)
 
 
 
-#define SEND_FLOAT(_X_)							\
-	do {								\
-		const uint8_t * b = (const uint8_t *) &(_X_);		\
-		Serial.write(b, 4);					\
-	} while (0)
-
-
+#if WITH_DATA_TO_PC
 void send_to_pc(mpu_meas_t & meas)
 {
 	const uint8_t header[6] = { 0x17, 0x6b, 0x61, 0x6d, 0x69, 0x6c };
+
+
+	/* Error detection: calculate checksum.
+	   https://en.wikipedia.org/wiki/Error_detection_and_correction#Checksums */
+	const size_t meas_size = sizeof (mpu_meas_t);
+	const uint8_t * m = (uint8_t *) &meas;
+	meas.checksum = 0x00;
+	for (size_t i = 0; i < meas_size - 1; i++) { /* Don't include last byte in the struct, i.e. the checksum byte. */
+		meas.checksum ^= m[i];
+	}
+
+
 	Serial.write(header, 6);
-
-	float a;
-
-	a = 1000.0 * meas.ax;
-	SEND_FLOAT(a);
-	a = 1000.0 * meas.ay;
-	SEND_FLOAT(a);
-	a = 1000.0 * meas.az;
-	SEND_FLOAT(a);
-
-	SEND_FLOAT(meas.gx);
-	SEND_FLOAT(meas.gy);
-	SEND_FLOAT(meas.gz);
-
-	SEND_FLOAT(meas.mx);
-	SEND_FLOAT(meas.my);
-	SEND_FLOAT(meas.mz);
+	/* Error correction: repetition code (send the data (and checksum) twice).
+	   https://en.wikipedia.org/wiki/Repetition_code */
+	Serial.write(m, meas_size);
+	Serial.write(m, meas_size);
 }
+#endif

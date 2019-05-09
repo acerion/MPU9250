@@ -23,7 +23,7 @@
 
 
 #define BYTES_PER_FLOAT   4
-#define N_FLOATS          9
+#define N_FLOATS          (3 * 3 + 1) /* 9 DoF + temperature. */
 
 #define STATE_TEXT     0
 #define STATE_DATA     1
@@ -32,15 +32,21 @@
 #define HEADER_SIZE       6
 
 
+typedef union {
+	uint8_t bytes[BYTES_PER_FLOAT * N_FLOATS];
+	float floats[N_FLOATS];
+} payload_t;
 
 
 struct {
 	struct receiver_data {
 		uint8_t header[HEADER_SIZE];
-		union {
-			uint8_t bytes[BYTES_PER_FLOAT * N_FLOATS];
-			float floats[N_FLOATS];
-		} payload1;
+
+		payload_t payload1;
+		uint8_t checksum1;
+
+		payload_t payload2;
+		uint8_t checksum2;
 	} __attribute__((packed)) data;
 
 	size_t i;
@@ -58,7 +64,9 @@ static char file_name[64] = "/dev/ttyUSB0";
 
 static int configure_fd(int fd);
 static void handle_binary(uint8_t c);
-static void handle_payload(void);
+static void handle_payloads(void);
+static void print_payload(int x, payload_t * payload);
+static bool is_checksum_valid(payload_t * payload, uint8_t checksum);
 
 
 
@@ -72,8 +80,6 @@ int main(void)
 	}
 
 	configure_fd(fd);
-
-	receiver.state = STATE_TEXT;
 
 	do {
 		uint8_t c;
@@ -109,7 +115,7 @@ void handle_binary(uint8_t c)
 {
 	if (receiver.state == STATE_TEXT) {
 		if (HEADER_BEGIN != c) {
-			fprintf(stderr, "[EE] Expected beginning of header, received 0x%x\n", c);
+			fprintf(stderr, "[EE] Expected beginning of header, received 0x%02x\n", c);
 			return;
 		}
 	}
@@ -140,7 +146,7 @@ void handle_binary(uint8_t c)
 		}
 
 	} else if (receiver.i == data_size) {
-		handle_payload();
+		handle_payloads();
 
 		/* Reset receiver. */
 		receiver.i = 0;
@@ -156,12 +162,67 @@ void handle_binary(uint8_t c)
 
 
 
-void handle_payload(void)
+void handle_payloads(void)
 {
-	const float * floats = receiver.data.payload1.floats;
-	fprintf(stderr, "     acc:  %11.6f  %11.6f  %11.6f  |  ", floats[0], floats[1], floats[2]);
-	fprintf(stderr, "gyro: %11.6f  %11.6f  %11.6f  |  ",      floats[3], floats[4], floats[5]);
-	fprintf(stderr, "mag:  %11.6f  %11.6f  %11.6f\n",         floats[6], floats[7], floats[8]);
+	if (0 != memcmp(&receiver.data.payload1, &receiver.data.payload2, sizeof (payload_t))) {
+		fprintf(stderr, "[EE] Payload contents mismatch\n");
+	}
+	if (receiver.data.checksum1 != receiver.data.checksum2) {
+		fprintf(stderr, "[EE] Checksum bytes mismatch (checksum 1 = 0x%02x, checksum 2 = 0x%02x)\n",
+			receiver.data.checksum1, receiver.data.checksum2);
+	}
+
+	if (is_checksum_valid(&receiver.data.payload1, receiver.data.checksum1)) {
+		print_payload(1, &receiver.data.payload1);
+		return;
+	}
+	fprintf(stderr, "[EE] Checksum of payload 1 can't be verified\n");
+
+	if (is_checksum_valid(&receiver.data.payload2, receiver.data.checksum2)) {
+		print_payload(2, &receiver.data.payload2);
+		return;
+	}
+	fprintf(stderr, "[EE] Checksum of payload 2 can't be verified\n");
+}
+
+
+
+
+bool is_checksum_valid(payload_t * payload, uint8_t received)
+{
+	uint8_t calculated = 0x00;
+	const uint8_t * data = (uint8_t *) payload;
+
+	for (size_t i = 0; i < sizeof (payload_t); i++) {
+		calculated ^= data[i];
+	}
+
+	if (calculated != received) {
+		fprintf(stderr, "[EE] Checksum mismatch: calculated 0x%02x != received 0x%02x\n", calculated, received);
+		return false;
+	} else {
+		//fprintf(stderr, "[II] Checksum match: calculated 0x%02x == received 0x%02x\n", calculated, received);
+		return true;
+	}
+}
+
+
+
+
+void print_payload(int x, payload_t * payload)
+{
+	const float * floats = payload->floats;
+
+	fprintf(stderr, "   %d   "
+		"acc:  %11.6f  %11.6f  %11.6f  |  "
+		"gyro: %11.6f  %11.6f  %11.6f  |  "
+		"mag:  %11.6f  %11.6f  %11.6f  |  "
+		"temp: %6.2f\n",
+		x,
+		1000.0 * floats[0], 1000.0 * floats[1], 1000.0 * floats[2],
+		floats[3], floats[4], floats[5],
+		floats[6], floats[7], floats[8],
+		floats[9]);
 }
 
 

@@ -30,8 +30,8 @@
 #endif
 
 
-/* Do we want to send measurement results to PC over serial? */
-#define WITH_MEAS_TO_PC     1
+/* Do we want to send data (primarily measurements) to PC over serial? */
+#define WITH_DATA_TO_PC     1
 
 
 
@@ -58,7 +58,11 @@ typedef struct {
 	   be sent to PC, let's keep number of its member constant for
 	   easier maintenance and interoperability. */
 	float temperature;
-} mpu_meas_t;
+
+#if WITH_DATA_TO_PC
+	uint8_t checksum;
+#endif
+} __attribute__((packed)) mpu_meas_t;
 
 
 
