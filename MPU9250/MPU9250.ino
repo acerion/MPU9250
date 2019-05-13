@@ -185,7 +185,7 @@ void myinthandler(void);
 
 void readMPU9250Data(int16_t * destination);
 /* Returns true if new Magnetometer data has been read into @destination. */
-bool readMagData(int16_t * destination);
+uint8_t readMagData(int16_t * destination);
 
 void MPU9250SelfTest(float * destination);
 void accelGyroCalMPU9250(float * dest_g_bias, float * dest_a_bias);
@@ -303,6 +303,10 @@ void loop(void)
 	if (true || newData == true) {  /* On interrupt, read data. */
 		newData = false;  /* Reset newData flag. */
 
+#if WITH_DATA_TO_PC
+		g_meas.timestamp = micros();
+#endif
+
 		readMPU9250Data(raw_agt); // INT cleared on any read
 
 
@@ -325,8 +329,8 @@ void loop(void)
 #endif
 
 
-		const bool new_mag_data_ready = readMagData(raw_mag);
-		if (new_mag_data_ready) {
+		g_meas.new_mag_data_ready = readMagData(raw_mag);
+		if (g_meas.new_mag_data_ready) {
 			/* Calculate the magnetometer values in
 			   milliGauss.  Include factory calibration
 			   per data sheet and user environmental
@@ -341,7 +345,7 @@ void loop(void)
 		}
 
 #if WITH_DATA_TO_PC
-	send_to_pc(g_meas);
+		send_to_pc(g_meas);
 #endif
 	}
 
@@ -360,7 +364,6 @@ void loop(void)
 
 	calculate_quaternions(g_meas, filter_time_delta);
 #endif
-
 
 
 	const uint32_t display_time_now = millis();
@@ -484,7 +487,7 @@ void readMPU9250Data(int16_t * destination)
 
 
 
-bool readMagData(int16_t * destination)
+uint8_t readMagData(int16_t * destination)
 {
 	uint8_t rawData[7];  // x/y/z gyro register data, ST2 register stored here, must read ST2 at end of data acquisition
 	const uint8_t ready = (readByte(AK8963_ADDRESS, AK8963_ST1) & 0x01);
@@ -498,7 +501,7 @@ bool readMagData(int16_t * destination)
 		}
 	}
 
-	return (bool) ready;
+	return ready;
 }
 
 

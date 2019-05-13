@@ -59,7 +59,10 @@ typedef struct {
 	   easier maintenance and interoperability. */
 	float temperature;
 
+	uint8_t new_mag_data_ready;
+
 #if WITH_DATA_TO_PC
+	uint32_t timestamp; /* [microseconds] */
 	uint8_t checksum;
 #endif
 } __attribute__((packed)) mpu_meas_t;

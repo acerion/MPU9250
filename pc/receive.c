@@ -22,8 +22,6 @@
 
 
 
-#define BYTES_PER_FLOAT   4
-#define N_FLOATS          (3 * 3 + 1) /* 9 DoF + temperature. */
 
 #define STATE_TEXT     0
 #define STATE_DATA     1
@@ -32,21 +30,35 @@
 #define HEADER_SIZE       6
 
 
-typedef union {
-	uint8_t bytes[BYTES_PER_FLOAT * N_FLOATS];
-	float floats[N_FLOATS];
-} payload_t;
+typedef struct {
+	float ax;
+	float ay;
+	float az;
+
+	float gx;
+	float gy;
+	float gz;
+
+	float mx;
+	float my;
+	float mz;
+
+	float temperature;
+
+	uint8_t new_mag_data_ready;
+	uint32_t timestamp; /* [microseconds] */
+} __attribute__((packed)) payload_t;
 
 
 struct {
 	struct receiver_data {
 		uint8_t header[HEADER_SIZE];
 
-		payload_t payload1;
-		uint8_t checksum1;
+		payload_t payload_a;
+		uint8_t checksum_a;
 
-		payload_t payload2;
-		uint8_t checksum2;
+		payload_t payload_b;
+		uint8_t checksum_b;
 	} __attribute__((packed)) data;
 
 	size_t i;
@@ -65,7 +77,7 @@ static char file_name[64] = "/dev/ttyUSB0";
 static int configure_fd(int fd);
 static void handle_binary(uint8_t c);
 static void handle_payloads(void);
-static void print_payload(int x, payload_t * payload);
+static void print_payload(char p, payload_t * payload);
 static bool is_checksum_valid(payload_t * payload, uint8_t checksum);
 
 
@@ -164,25 +176,25 @@ void handle_binary(uint8_t c)
 
 void handle_payloads(void)
 {
-	if (0 != memcmp(&receiver.data.payload1, &receiver.data.payload2, sizeof (payload_t))) {
+	if (0 != memcmp(&receiver.data.payload_a, &receiver.data.payload_b, sizeof (payload_t))) {
 		fprintf(stderr, "[EE] Payload contents mismatch\n");
 	}
-	if (receiver.data.checksum1 != receiver.data.checksum2) {
-		fprintf(stderr, "[EE] Checksum bytes mismatch (checksum 1 = 0x%02x, checksum 2 = 0x%02x)\n",
-			receiver.data.checksum1, receiver.data.checksum2);
+	if (receiver.data.checksum_a != receiver.data.checksum_b) {
+		fprintf(stderr, "[EE] Checksum bytes mismatch (checksum A = 0x%02x, checksum B = 0x%02x)\n",
+			receiver.data.checksum_a, receiver.data.checksum_b);
 	}
 
-	if (is_checksum_valid(&receiver.data.payload1, receiver.data.checksum1)) {
-		print_payload(1, &receiver.data.payload1);
+	if (is_checksum_valid(&receiver.data.payload_a, receiver.data.checksum_a)) {
+		print_payload('a', &receiver.data.payload_a);
 		return;
 	}
-	fprintf(stderr, "[EE] Checksum of payload 1 can't be verified\n");
+	fprintf(stderr, "[EE] Checksum of payload A can't be verified\n");
 
-	if (is_checksum_valid(&receiver.data.payload2, receiver.data.checksum2)) {
-		print_payload(2, &receiver.data.payload2);
+	if (is_checksum_valid(&receiver.data.payload_b, receiver.data.checksum_b)) {
+		print_payload('b', &receiver.data.payload_b);
 		return;
 	}
-	fprintf(stderr, "[EE] Checksum of payload 2 can't be verified\n");
+	fprintf(stderr, "[EE] Checksum of payload B can't be verified\n");
 }
 
 
@@ -209,20 +221,26 @@ bool is_checksum_valid(payload_t * payload, uint8_t received)
 
 
 
-void print_payload(int x, payload_t * payload)
+void print_payload(char id, payload_t * p)
 {
-	const float * floats = payload->floats;
+	static uint32_t timestamp_previous = 0;
+	const uint32_t delta = p->timestamp - timestamp_previous;
 
-	fprintf(stderr, "   %d   "
+	fprintf(stderr, "payload %c  "
+		"time: %15lu/%6lu [us]/%5.1f [Hz]  |  "
 		"acc:  %11.6f  %11.6f  %11.6f  |  "
 		"gyro: %11.6f  %11.6f  %11.6f  |  "
-		"mag:  %11.6f  %11.6f  %11.6f  |  "
+		"mag (%s):  %11.6f  %11.6f  %11.6f  |  "
 		"temp: %6.2f\n",
-		x,
-		1000.0 * floats[0], 1000.0 * floats[1], 1000.0 * floats[2],
-		floats[3], floats[4], floats[5],
-		floats[6], floats[7], floats[8],
-		floats[9]);
+		id,
+		(long unsigned) p->timestamp, (long unsigned) delta,
+		(1.0 / (delta / 1000000.0)),
+		1000.0 * p->ax, 1000.0 * p->ay, 1000.0 * p->az,
+		p->gx, p->gy, p->gz,
+		p->new_mag_data_ready ? "new" : "old", p->mx, p->my, p->mz,
+		p->temperature);
+
+	timestamp_previous = p->timestamp;
 }
 
 
