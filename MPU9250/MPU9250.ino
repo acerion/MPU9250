@@ -25,6 +25,7 @@
   VDDI --------------------- 3.3V
   SDA ----------------------- A4
   SCL ----------------------- A5
+  INT -----------------------  2
   GND ---------------------- GND
 
   Note: The MPU9250 is an I2C sensor and uses the Arduino Wire
@@ -131,7 +132,8 @@ const uint8_t Mmode  = MAG_RATE_100HZ;
 float aRes, gRes, mRes;      // scale resolutions per LSB for the sensors
 
 /* Pin definitions. */
-const int intPin = 8;
+const int interrupt_pin = 2;
+const int interrupt_number = 0; /* Pin 2 = interrupt 0. Pin 3 = interrupt 1. */
 const int ledPin = 13;
 
 volatile bool newData = false;
@@ -209,8 +211,6 @@ void setup(void)
 	Serial.println("\n\nMicrocontroller is online\n");
 	delay(3000);
 
-	// Set up the interrupt pin, its set as active high, push-pull
-	pinMode(intPin, INPUT);
 	pinMode(ledPin, OUTPUT);
 	digitalWrite(ledPin, HIGH);
 
@@ -283,8 +283,14 @@ void setup(void)
 	/* Add delay to see results before serial spew of data. */
 	delay(1000);
 
+
 	/* Define interrupt for INT pin output of MPU9250. */
-	attachInterrupt(intPin, myinthandler, RISING);
+	// Set up the interrupt pin, its set as active high, push-pull
+	pinMode(interrupt_pin, INPUT_PULLUP);
+	digitalWrite(interrupt_pin, LOW);
+	attachInterrupt(interrupt_number, myinthandler, RISING); /* https://arduino.stackexchange.com/a/23007 */
+	delay(100);
+
 
 	return;
 
@@ -299,58 +305,69 @@ void setup(void)
 
 void loop(void)
 {
-	/* If intPin goes high, all data registers have new data. */
-	if (true || newData == true) {  /* On interrupt, read data. */
-		newData = false;  /* Reset newData flag. */
-
-#if WITH_DATA_TO_PC
-		g_meas.timestamp = micros();
-#endif
-
-		readMPU9250Data(raw_agt); // INT cleared on any read
-
-
-		/* Convert the acceleration value into actual
-		   meters per second^2. This depends on scale being set. */
-		g_meas.ax = (float) raw_agt[0] * aRes - accelBias[0];
-		g_meas.ay = (float) raw_agt[1] * aRes - accelBias[1];
-		g_meas.az = (float) raw_agt[2] * aRes - accelBias[2];
-
-
-		/* Convert the gyro value into actual degrees per
-		   second. This depends on scale being set. */
-		g_meas.gx = (float) raw_agt[4] * gRes;
-		g_meas.gy = (float) raw_agt[5] * gRes;
-		g_meas.gz = (float) raw_agt[6] * gRes;
-
-
-#if WITH_TEMPERATURE
-		g_meas.temperature = ((float) raw_agt[3]) / 333.87 + 21.0;
-#endif
-
-
-		g_meas.new_mag_data_ready = readMagData(raw_mag);
-		if (g_meas.new_mag_data_ready) {
-			/* Calculate the magnetometer values in
-			   milliGauss.  Include factory calibration
-			   per data sheet and user environmental
-			   corrections. Calculated value depends on
-			   scale being set*/
-			g_meas.mx = (float) raw_mag[0] * mRes * magCalibration[0] - magBias[0];
-			g_meas.my = (float) raw_mag[1] * mRes * magCalibration[1] - magBias[1];
-			g_meas.mz = (float) raw_mag[2] * mRes * magCalibration[2] - magBias[2];
-			g_meas.mx *= magScale[0];
-			g_meas.my *= magScale[1];
-			g_meas.mz *= magScale[2];
-		}
-
-#if WITH_DATA_TO_PC
-		send_to_pc(g_meas);
-#endif
+	/* If interrupt_pin goes high, all data registers have new data. */
+	if (newData != true) {  /* No interrupt, no new data. */
+		return;
 	}
 
 
+#if WITH_DATA_TO_PC
+	g_meas.timestamp = micros();
+#endif
+
+	/* On interrupt, read data. */
+	readMPU9250Data(raw_agt); // INT cleared on any read
+
+
+	/* Convert the acceleration value into actual
+		   meters per second^2. This depends on scale being set. */
+	g_meas.ax = (float) raw_agt[0] * aRes - accelBias[0];
+	g_meas.ay = (float) raw_agt[1] * aRes - accelBias[1];
+	g_meas.az = (float) raw_agt[2] * aRes - accelBias[2];
+
+
+	/* Convert the gyro value into actual degrees per
+	   second. This depends on scale being set. */
+	g_meas.gx = (float) raw_agt[4] * gRes;
+	g_meas.gy = (float) raw_agt[5] * gRes;
+	g_meas.gz = (float) raw_agt[6] * gRes;
+
+
+#if WITH_TEMPERATURE
+	g_meas.temperature = ((float) raw_agt[3]) / 333.87 + 21.0;
+#endif
+
+
+	g_meas.new_mag_data_ready = readMagData(raw_mag);
+	if (g_meas.new_mag_data_ready) {
+		/* Calculate the magnetometer values in
+		   milliGauss.  Include factory calibration
+		   per data sheet and user environmental
+		   corrections. Calculated value depends on
+		   scale being set*/
+		g_meas.mx = (float) raw_mag[0] * mRes * magCalibration[0] - magBias[0];
+		g_meas.my = (float) raw_mag[1] * mRes * magCalibration[1] - magBias[1];
+		g_meas.mz = (float) raw_mag[2] * mRes * magCalibration[2] - magBias[2];
+		g_meas.mx *= magScale[0];
+		g_meas.my *= magScale[1];
+		g_meas.mz *= magScale[2];
+	}
+
+#if WITH_DATA_TO_PC
+	/* Send every new data from IMU to PC. */
+	send_to_pc(g_meas);
+#endif
+	newData = false;  /* Reset newData flag. */
+
+
+
+	/* *** End of core processing of IMU data. *** */
+
+
+
 #if WITH_LOCAL_AHRS
+	/* Update filter on every 'new data from IMU' cycle. */
+
 	/*
 	  Set integration time by time elapsed since last filter
 	  update.
@@ -366,6 +383,8 @@ void loop(void)
 #endif
 
 
+
+#if WITH_LOCAL_DISPLAY
 	const uint32_t display_time_now = millis();
 	if ((display_time_now - display_time_prev) > serial_debug_interval) {
 
@@ -397,6 +416,7 @@ void loop(void)
 		digitalWrite(ledPin, !digitalRead(ledPin));
 		display_time_prev = millis();
 	}
+#endif /* if WITH_LOCAL_DISPLAY */
 }
 
 

@@ -22,6 +22,10 @@
 #define WITH_TEMPERATURE    1
 
 
+/* Do we want to print any results locally? */
+#define WITH_LOCAL_DISPLAY  0
+
+
 /* Do we want calculations of quaternions and yaw/pitch/roll to be
    done on microcontroller? */
 #define WITH_LOCAL_AHRS     1
