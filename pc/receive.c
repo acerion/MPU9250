@@ -227,10 +227,10 @@ void print_payload(char id, payload_t * p)
 	const uint32_t delta = p->timestamp - timestamp_previous;
 
 	fprintf(stderr, "payload %c  "
-		"time: %15lu/%6lu [us]/%5.1f [Hz]  |  "
-		"acc:  %11.6f  %11.6f  %11.6f  |  "
-		"gyro: %11.6f  %11.6f  %11.6f  |  "
-		"mag (%s):  %11.6f  %11.6f  %11.6f  |  "
+		"time: %15lu/%6lu [us]/%5.1f [Hz]  | "
+		"acc:  %12.6f  %12.6f  %12.6f  | "
+		"gyro: %11.6f  %11.6f  %11.6f  | "
+		"mag (%s):  %11.6f  %11.6f  %11.6f  | "
 		"temp: %6.2f\n",
 		id,
 		(long unsigned) p->timestamp, (long unsigned) delta,
