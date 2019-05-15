@@ -16,6 +16,9 @@
 
 
 
+#include "../MPU9250/MPU9250.h"
+
+
 
 /* https://www.cmrr.umn.edu/~strupp/serial.html */
 
@@ -30,35 +33,13 @@
 #define HEADER_SIZE       6
 
 
-typedef struct {
-	float ax;
-	float ay;
-	float az;
-
-	float gx;
-	float gy;
-	float gz;
-
-	float mx;
-	float my;
-	float mz;
-
-	float temperature;
-
-	uint8_t new_mag_data_ready;
-	uint32_t timestamp; /* [microseconds] */
-} __attribute__((packed)) payload_t;
-
 
 struct {
-	struct receiver_data {
+	struct received {
 		uint8_t header[HEADER_SIZE];
 
-		payload_t payload_a;
-		uint8_t checksum_a;
-
-		payload_t payload_b;
-		uint8_t checksum_b;
+		data_t data_a;
+		data_t data_b;
 	} __attribute__((packed)) data;
 
 	size_t i;
@@ -75,10 +56,10 @@ static char file_name[64] = "/dev/ttyUSB0";
 
 
 static int configure_fd(int fd);
-static void handle_binary(uint8_t c);
-static void handle_payloads(void);
-static void print_payload(char p, payload_t * payload);
-static bool is_checksum_valid(payload_t * payload, uint8_t checksum);
+static void handle_byte(uint8_t c);
+static void handle_received_data(struct received * data);
+static void print_data(data_t * data, char id);
+static bool is_checksum_valid(data_t * data);
 
 
 
@@ -99,14 +80,14 @@ int main(void)
 		if (n_read > 0) {
 			switch (receiver.state) {
 			case STATE_DATA:
-				handle_binary(c);
+				handle_byte(c);
 				break;
 			case STATE_TEXT:
 			default:
 				if (c == HEADER_BEGIN) {
-					handle_binary(c);
+					handle_byte(c);
 				} else {
-					//fprintf(stderr, "%c", c);
+					fprintf(stderr, "%c", c);
 				}
 				break;
 			}
@@ -123,7 +104,7 @@ int main(void)
 
 
 
-void handle_binary(uint8_t c)
+void handle_byte(uint8_t c)
 {
 	if (receiver.state == STATE_TEXT) {
 		if (HEADER_BEGIN != c) {
@@ -133,10 +114,10 @@ void handle_binary(uint8_t c)
 	}
 	receiver.state = STATE_DATA;
 
-	uint8_t * data = (uint8_t *) &receiver.data;
+	uint8_t * bytes = (uint8_t *) &receiver.data;
 	const size_t data_size = sizeof (receiver.data);
 
-	data[receiver.i] = c;
+	bytes[receiver.i] = c;
 	receiver.i++;
 
 	if (receiver.i == HEADER_SIZE) {
@@ -154,18 +135,18 @@ void handle_binary(uint8_t c)
 			receiver.i = 0;
 			memset(receiver.data.header, 0, HEADER_SIZE);
 		} else {
-			/* Received correct header, start receiving payload. */
+			/* Received correct header, start receiving data. */
 		}
 
 	} else if (receiver.i == data_size) {
-		handle_payloads();
+		handle_received_data(&receiver.data);
 
 		/* Reset receiver. */
 		receiver.i = 0;
 		receiver.state = STATE_TEXT;
 		memset(&receiver.data, 0, data_size);
 	} else {
-		; /* Continue receiving header or payload. */
+		; /* Continue receiving header or data. */
 	}
 
 	return;
@@ -174,46 +155,46 @@ void handle_binary(uint8_t c)
 
 
 
-void handle_payloads(void)
+void handle_received_data(struct received * received)
 {
-	if (0 != memcmp(&receiver.data.payload_a, &receiver.data.payload_b, sizeof (payload_t))) {
-		fprintf(stderr, "[EE] Payload contents mismatch\n");
+	if (0 != memcmp(&received->data_a, &received->data_b, sizeof (data_t))) {
+		fprintf(stderr, "[EE] Data contents mismatch\n");
 	}
-	if (receiver.data.checksum_a != receiver.data.checksum_b) {
+	if (received->data_a.checksum != received->data_b.checksum) {
 		fprintf(stderr, "[EE] Checksum bytes mismatch (checksum A = 0x%02x, checksum B = 0x%02x)\n",
-			receiver.data.checksum_a, receiver.data.checksum_b);
+			received->data_a.checksum, received->data_b.checksum);
 	}
 
-	if (is_checksum_valid(&receiver.data.payload_a, receiver.data.checksum_a)) {
-		print_payload('a', &receiver.data.payload_a);
+	if (is_checksum_valid(&received->data_a)) {
+		print_data(&received->data_a, 'a');
 		return;
 	}
-	fprintf(stderr, "[EE] Checksum of payload A can't be verified\n");
+	fprintf(stderr, "[EE] Checksum of data A can't be verified\n");
 
-	if (is_checksum_valid(&receiver.data.payload_b, receiver.data.checksum_b)) {
-		print_payload('b', &receiver.data.payload_b);
+	if (is_checksum_valid(&received->data_b)) {
+		print_data(&received->data_b, 'b');
 		return;
 	}
-	fprintf(stderr, "[EE] Checksum of payload B can't be verified\n");
+	fprintf(stderr, "[EE] Checksum of data B can't be verified\n");
 }
 
 
 
 
-bool is_checksum_valid(payload_t * payload, uint8_t received)
+bool is_checksum_valid(data_t * data)
 {
 	uint8_t calculated = 0x00;
-	const uint8_t * data = (uint8_t *) payload;
+	const uint8_t * bytes = (uint8_t *) data;
 
-	for (size_t i = 0; i < sizeof (payload_t); i++) {
-		calculated ^= data[i];
+	for (size_t i = 0; i < sizeof (data_t) - 1; i++) { /* -1: don't include checksum byte. */
+		calculated ^= bytes[i];
 	}
 
-	if (calculated != received) {
-		fprintf(stderr, "[EE] Checksum mismatch: calculated 0x%02x != received 0x%02x\n", calculated, received);
+	if (calculated != data->checksum) {
+		fprintf(stderr, "[EE] Checksum mismatch: calculated 0x%02x != received 0x%02x\n", calculated, data->checksum);
 		return false;
 	} else {
-		//fprintf(stderr, "[II] Checksum match: calculated 0x%02x == received 0x%02x\n", calculated, received);
+		//fprintf(stderr, "[II] Checksum match: calculated 0x%02x == received 0x%02x\n", calculated, data->checksum);
 		return true;
 	}
 }
@@ -221,26 +202,26 @@ bool is_checksum_valid(payload_t * payload, uint8_t received)
 
 
 
-void print_payload(char id, payload_t * p)
+void print_data(data_t * data, char id)
 {
 	static uint32_t timestamp_previous = 0;
-	const uint32_t delta = p->timestamp - timestamp_previous;
+	const uint32_t delta = data->timestamp - timestamp_previous;
 
-	fprintf(stderr, "payload %c  "
+	fprintf(stderr, "Data %c  "
 		"time: %15lu/%6lu [us]/%5.1f [Hz]  | "
 		"acc:  %12.6f  %12.6f  %12.6f  | "
 		"gyro: %11.6f  %11.6f  %11.6f  | "
 		"mag (%s):  %11.6f  %11.6f  %11.6f  | "
 		"temp: %6.2f\n",
 		id,
-		(long unsigned) p->timestamp, (long unsigned) delta,
+		(long unsigned) data->timestamp, (long unsigned) delta,
 		(1.0 / (delta / 1000000.0)),
-		1000.0 * p->ax, 1000.0 * p->ay, 1000.0 * p->az,
-		p->gx, p->gy, p->gz,
-		p->new_mag_data_ready ? "new" : "old", p->mx, p->my, p->mz,
-		p->temperature);
+		1000.0 * data->ax, 1000.0 * data->ay, 1000.0 * data->az,
+		data->gx, data->gy, data->gz,
+		data->new_mag_data_ready ? "new" : "old", data->mx, data->my, data->mz,
+		data->temperature);
 
-	timestamp_previous = p->timestamp;
+	timestamp_previous = data->timestamp;
 }
 
 

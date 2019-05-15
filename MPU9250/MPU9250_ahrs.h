@@ -50,11 +50,11 @@ typedef struct {
 
 /* Wrapper around functions from quaternionFilters.ino.
    The functions put results in global 'float q[4]' variable. */
-void calculate_quaternions(const mpu_meas_t & meas, float filter_time_delta);
+void calculate_quaternions(const data_t & data, float filter_time_delta);
 
-/* Use quaternions from global array q[4] and from @meas to calculate
+/* Use quaternions from global array q[4] and from @data to calculate
    AHRS data and put it in @ahrs. */
-void calculate_ahrs(const mpu_meas_t & meas, mpu_ahrs_t & ahrs, float rate);
+void calculate_ahrs(const data_t & data, mpu_ahrs_t & ahrs, float rate);
 
 #endif /* #if WITH_LOCAL_AHRS */
 

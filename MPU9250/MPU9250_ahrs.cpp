@@ -45,7 +45,7 @@ static float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 
 
 
-void calculate_quaternions(const mpu_meas_t & meas, float filter_time_delta)
+void calculate_quaternions(const data_t & data, float filter_time_delta)
 {
 	/*
 	  Sensors x (y)-axis of the accelerometer/gyro is aligned with
@@ -73,9 +73,9 @@ void calculate_quaternions(const mpu_meas_t & meas, float filter_time_delta)
 	*/
 #if WITH_LOCAL_AHRS
 #if USE_MADGWICK
-	MadgwickQuaternionUpdate(q, -meas.ax, meas.ay, meas.az, meas.gx*M_PI/180.0f, -meas.gy*M_PI/180.0f, -meas.gz*M_PI/180.0f, meas.my, -meas.mx, meas.mz, filter_time_delta);
+	MadgwickQuaternionUpdate(q, -data.ax, data.ay, data.az, data.gx*M_PI/180.0f, -data.gy*M_PI/180.0f, -data.gz*M_PI/180.0f, data.my, -data.mx, data.mz, filter_time_delta);
 #else
-	MahonyQuaternionUpdate(q, -meas.ax, meas.ay, meas.az, meas.gx*M_PI/180.0f, -meas.gy*M_PI/180.0f, -meas.gz*M_PI/180.0f, meas.my, -meas.mx, meas.mz, filter_time_delta);
+	MahonyQuaternionUpdate(q, -data.ax, data.ay, data.az, data.gx*M_PI/180.0f, -data.gy*M_PI/180.0f, -data.gz*M_PI/180.0f, data.my, -data.mx, data.mz, filter_time_delta);
 #endif
 #endif
 }
@@ -83,7 +83,7 @@ void calculate_quaternions(const mpu_meas_t & meas, float filter_time_delta)
 
 
 
-void calculate_ahrs(const mpu_meas_t & meas, mpu_ahrs_t & ahrs, float rate)
+void calculate_ahrs(const data_t & data, mpu_ahrs_t & ahrs, float rate)
 {
 	/*
 	  Define output variables from updated
@@ -150,9 +150,9 @@ void calculate_ahrs(const mpu_meas_t & meas, mpu_ahrs_t & ahrs, float rate)
 	}
 	ahrs.roll  *= 180.0f / M_PI;
 
-	ahrs.lin_ax = meas.ax + ahrs.a31;
-	ahrs.lin_ay = meas.ay + ahrs.a32;
-	ahrs.lin_az = meas.az - ahrs.a33;
+	ahrs.lin_ax = data.ax + ahrs.a31;
+	ahrs.lin_ay = data.ay + ahrs.a32;
+	ahrs.lin_az = data.az - ahrs.a33;
 
 
 

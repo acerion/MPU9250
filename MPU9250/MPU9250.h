@@ -69,7 +69,7 @@ typedef struct {
 	uint32_t timestamp; /* [microseconds] */
 	uint8_t checksum;
 #endif
-} __attribute__((packed)) mpu_meas_t;
+} __attribute__((packed)) data_t;
 
 
 

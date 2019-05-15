@@ -153,7 +153,7 @@ float magScale[3] = {0, 0, 0};
 float SelfTest[6];
 
 /* Variable to hold latest sensor data values calculated from raw values. */
-mpu_meas_t g_meas;
+data_t g_data;
 
 /* Used to control rate of displaying data on serial port. */
 uint32_t display_time_prev = 0;
@@ -193,10 +193,10 @@ void MPU9250SelfTest(float * destination);
 void accelGyroCalMPU9250(float * dest_g_bias, float * dest_a_bias);
 void magCalMPU9250(float * dest_bias, float * dest_scale);
 
-void debug_print_meas(const mpu_meas_t & meas);
+void debug_print_data(const data_t & data);
 
 #if WITH_DATA_TO_PC
-void send_to_pc(mpu_meas_t & meas);
+void send_to_pc(data_t & data);
 #endif
 
 
@@ -312,7 +312,7 @@ void loop(void)
 
 
 #if WITH_DATA_TO_PC
-	g_meas.timestamp = micros();
+	g_data.timestamp = micros();
 #endif
 
 	/* On interrupt, read data. */
@@ -321,41 +321,41 @@ void loop(void)
 
 	/* Convert the acceleration value into actual
 		   meters per second^2. This depends on scale being set. */
-	g_meas.ax = (float) raw_agt[0] * aRes - accelBias[0];
-	g_meas.ay = (float) raw_agt[1] * aRes - accelBias[1];
-	g_meas.az = (float) raw_agt[2] * aRes - accelBias[2];
+	g_data.ax = (float) raw_agt[0] * aRes - accelBias[0];
+	g_data.ay = (float) raw_agt[1] * aRes - accelBias[1];
+	g_data.az = (float) raw_agt[2] * aRes - accelBias[2];
 
 
 	/* Convert the gyro value into actual degrees per
 	   second. This depends on scale being set. */
-	g_meas.gx = (float) raw_agt[4] * gRes;
-	g_meas.gy = (float) raw_agt[5] * gRes;
-	g_meas.gz = (float) raw_agt[6] * gRes;
+	g_data.gx = (float) raw_agt[4] * gRes;
+	g_data.gy = (float) raw_agt[5] * gRes;
+	g_data.gz = (float) raw_agt[6] * gRes;
 
 
 #if WITH_TEMPERATURE
-	g_meas.temperature = ((float) raw_agt[3]) / 333.87 + 21.0;
+	g_data.temperature = ((float) raw_agt[3]) / 333.87 + 21.0;
 #endif
 
 
-	g_meas.new_mag_data_ready = readMagData(raw_mag);
-	if (g_meas.new_mag_data_ready) {
+	g_data.new_mag_data_ready = readMagData(raw_mag);
+	if (g_data.new_mag_data_ready) {
 		/* Calculate the magnetometer values in
 		   milliGauss.  Include factory calibration
 		   per data sheet and user environmental
 		   corrections. Calculated value depends on
 		   scale being set*/
-		g_meas.mx = (float) raw_mag[0] * mRes * magCalibration[0] - magBias[0];
-		g_meas.my = (float) raw_mag[1] * mRes * magCalibration[1] - magBias[1];
-		g_meas.mz = (float) raw_mag[2] * mRes * magCalibration[2] - magBias[2];
-		g_meas.mx *= magScale[0];
-		g_meas.my *= magScale[1];
-		g_meas.mz *= magScale[2];
+		g_data.mx = (float) raw_mag[0] * mRes * magCalibration[0] - magBias[0];
+		g_data.my = (float) raw_mag[1] * mRes * magCalibration[1] - magBias[1];
+		g_data.mz = (float) raw_mag[2] * mRes * magCalibration[2] - magBias[2];
+		g_data.mx *= magScale[0];
+		g_data.my *= magScale[1];
+		g_data.mz *= magScale[2];
 	}
 
 #if WITH_DATA_TO_PC
 	/* Send every new data from IMU to PC. */
-	send_to_pc(g_meas);
+	send_to_pc(g_data);
 #endif
 	newData = false;  /* Reset newData flag. */
 
@@ -379,7 +379,7 @@ void loop(void)
 	filter_time_sum += filter_time_delta; // sum for averaging filter update rate
 	filter_time_sum_count++;
 
-	calculate_quaternions(g_meas, filter_time_delta);
+	calculate_quaternions(g_data, filter_time_delta);
 #endif
 
 
@@ -388,8 +388,8 @@ void loop(void)
 	const uint32_t display_time_now = millis();
 	if ((display_time_now - display_time_prev) > serial_debug_interval) {
 
-		if (serial_debug_meas) {
-			debug_print_meas(g_meas);
+		if (serial_debug_data) {
+			debug_print_data(g_data);
 		}
 
 
@@ -399,7 +399,7 @@ void loop(void)
 		   cycle. calculate_quaternions() is called in every
 		   read cycle and that's enough/necessary to keep
 		   filter up-to-date. */
-		calculate_ahrs(g_meas, g_ahrs, filter_time_sum_count/filter_time_sum);
+		calculate_ahrs(g_data, g_ahrs, filter_time_sum_count/filter_time_sum);
 
 		filter_time_sum_count = 0;
 		filter_time_sum = 0;
@@ -408,7 +408,7 @@ void loop(void)
 
 #if WITH_TEMPERATURE
 		if (serial_debug_temperature) {
-			Serial.print("Chip temperature is "); Serial.print(g_meas.temperature, 3); Serial.println(" degrees C");
+			Serial.print("Chip temperature is "); Serial.print(g_data.temperature, 3); Serial.println(" degrees C");
 		}
 #endif
 
@@ -956,42 +956,42 @@ void MPU9250SelfTest(float * destination)
 
 
 
-void debug_print_meas(const mpu_meas_t & meas)
+void debug_print_data(const data_t & data)
 {
-	Serial.print("ax = "); Serial.print((int) 1000 * meas.ax);
-	Serial.print(" ay = "); Serial.print((int) 1000 * meas.ay);
-	Serial.print(" az = "); Serial.print((int) 1000 * meas.az); Serial.print(" mg,");
-	Serial.print(" gx = "); Serial.print(meas.gx, 2);
-	Serial.print(" gy = "); Serial.print(meas.gy, 2);
-	Serial.print(" gz = "); Serial.print(meas.gz, 2); Serial.print(" deg/s,");
-	Serial.print(" mx = "); Serial.print((int) meas.mx);
-	Serial.print(" my = "); Serial.print((int) meas.my);
-	Serial.print(" mz = "); Serial.print((int) meas.mz); Serial.println(" mG");
+	Serial.print("ax = "); Serial.print((int) 1000 * data.ax);
+	Serial.print(" ay = "); Serial.print((int) 1000 * data.ay);
+	Serial.print(" az = "); Serial.print((int) 1000 * data.az); Serial.print(" mg,");
+	Serial.print(" gx = "); Serial.print(data.gx, 2);
+	Serial.print(" gy = "); Serial.print(data.gy, 2);
+	Serial.print(" gz = "); Serial.print(data.gz, 2); Serial.print(" deg/s,");
+	Serial.print(" mx = "); Serial.print((int) data.mx);
+	Serial.print(" my = "); Serial.print((int) data.my);
+	Serial.print(" mz = "); Serial.print((int) data.mz); Serial.println(" mG");
 }
 
 
 
 
 #if WITH_DATA_TO_PC
-void send_to_pc(mpu_meas_t & meas)
+void send_to_pc(data_t & data)
 {
 	const uint8_t header[6] = { 0x17, 0x6b, 0x61, 0x6d, 0x69, 0x6c };
 
 
 	/* Error detection: calculate checksum.
 	   https://en.wikipedia.org/wiki/Error_detection_and_correction#Checksums */
-	const size_t meas_size = sizeof (mpu_meas_t);
-	const uint8_t * m = (uint8_t *) &meas;
-	meas.checksum = 0x00;
-	for (size_t i = 0; i < meas_size - 1; i++) { /* Don't include last byte in the struct, i.e. the checksum byte. */
-		meas.checksum ^= m[i];
+	const size_t data_size = sizeof (data_t);
+	const uint8_t * bytes = (uint8_t *) &data;
+	data.checksum = 0x00;
+	for (size_t i = 0; i < data_size - 1; i++) { /* Don't include last byte in the struct, i.e. the checksum byte. */
+		data.checksum ^= bytes[i];
 	}
 
 
 	Serial.write(header, 6);
 	/* Error correction: repetition code (send the data (and checksum) twice).
 	   https://en.wikipedia.org/wiki/Repetition_code */
-	Serial.write(m, meas_size);
-	Serial.write(m, meas_size);
+	Serial.write(bytes, data_size);
+	Serial.write(bytes, data_size);
 }
 #endif
