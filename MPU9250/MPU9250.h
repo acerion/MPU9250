@@ -26,14 +26,6 @@
 #define WITH_LOCAL_DISPLAY  0
 
 
-/* Do we want calculations of quaternions and yaw/pitch/roll to be
-   done on microcontroller? */
-#define WITH_LOCAL_AHRS     1
-#if WITH_LOCAL_AHRS
-#define USE_MADGWICK        1   /* 1 = Madgwick filter; 0 = Mahony. */
-#endif
-
-
 /* Do we want to send data (primarily measurements) to PC over serial? */
 #define WITH_DATA_TO_PC     1
 

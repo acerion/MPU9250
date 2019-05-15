@@ -50,7 +50,6 @@
 
 
 #include "MPU9250.h"
-#include "MPU9250_ahrs.h"
 #include "MPU9250_regs.h"
 #include "MPU9250_i2c.h"
 
@@ -157,22 +156,6 @@ data_t g_data;
 
 /* Used to control rate of displaying data on serial port. */
 uint32_t display_time_prev = 0;
-
-
-
-
-#if WITH_LOCAL_AHRS
-
-/* Variables used to calculate integration interval and frequency of
-   calculations of output variables. */
-float filter_time_sum = 0.0f;
-uint32_t filter_time_sum_count = 0;
-uint32_t filter_time_prev = 0;
-
-/* Variable to hold results of calculations made with quaternions. */
-mpu_ahrs_t g_ahrs;
-
-#endif
 
 
 
@@ -365,25 +348,6 @@ void loop(void)
 
 
 
-#if WITH_LOCAL_AHRS
-	/* Update filter on every 'new data from IMU' cycle. */
-
-	/*
-	  Set integration time by time elapsed since last filter
-	  update.
-	*/
-	const uint32_t filter_time_now = micros();
-	const float filter_time_delta = ((filter_time_now - filter_time_prev)/1000000.0f);
-	filter_time_prev = filter_time_now;
-
-	filter_time_sum += filter_time_delta; // sum for averaging filter update rate
-	filter_time_sum_count++;
-
-	calculate_quaternions(g_data, filter_time_delta);
-#endif
-
-
-
 #if WITH_LOCAL_DISPLAY
 	const uint32_t display_time_now = millis();
 	if ((display_time_now - display_time_prev) > serial_debug_interval) {
@@ -391,19 +355,6 @@ void loop(void)
 		if (serial_debug_data) {
 			debug_print_data(g_data);
 		}
-
-
-#if WITH_LOCAL_AHRS
-		/* We don't need to calculate g_ahrs in every read
-		   cycle, we can calculate it only in every display
-		   cycle. calculate_quaternions() is called in every
-		   read cycle and that's enough/necessary to keep
-		   filter up-to-date. */
-		calculate_ahrs(g_data, g_ahrs, filter_time_sum_count/filter_time_sum);
-
-		filter_time_sum_count = 0;
-		filter_time_sum = 0;
-#endif
 
 
 #if WITH_TEMPERATURE
