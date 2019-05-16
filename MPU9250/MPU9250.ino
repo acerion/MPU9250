@@ -178,9 +178,7 @@ void magCalMPU9250(float * dest_bias, float * dest_scale);
 
 void debug_print_data(const data_t & data);
 
-#if WITH_DATA_TO_PC
 void send_to_pc(data_t & data);
-#endif
 
 
 
@@ -201,7 +199,7 @@ void setup(void)
 	/* Read the WHO_AM_I register, this is a good test of communication. */
 	byte who = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
 	if (who != 0x71) {
-		Serial.print("Could not connect to accel/gyro :"); Serial.print("I AM 0x"); Serial.print(who, HEX); Serial.print(" I should be 0x"); Serial.println(0x71, HEX);
+		Serial.print("Could not connect to accel/gyro: "); Serial.print("I AM 0x"); Serial.print(who, HEX); Serial.print(" I should be 0x"); Serial.println(0x71, HEX);
 		goto on_error;
 	}
 	Serial.println("Accel/gyro is online\n");
@@ -241,7 +239,7 @@ void setup(void)
 	   this is a good test of communication. */
 	who = readByte(AK8963_ADDRESS, AK8963_WHO_AM_I);
 	if (who != 0x48) {
-		Serial.print("Could not connect to magnetometer :"); Serial.print("I AM 0x"); Serial.print(who, HEX); Serial.print(" I should be 0x"); Serial.println(0x48, HEX);
+		Serial.print("Could not connect to magnetometer: "); Serial.print("I AM 0x"); Serial.print(who, HEX); Serial.print(" I should be 0x"); Serial.println(0x48, HEX);
 		goto on_error;
 	}
 	Serial.println("Magnetometer is online\n");
@@ -294,9 +292,7 @@ void loop(void)
 	}
 
 
-#if WITH_DATA_TO_PC
 	g_data.timestamp = micros();
-#endif
 
 	/* On interrupt, read data. */
 	readMPU9250Data(raw_agt); // INT cleared on any read
@@ -317,7 +313,7 @@ void loop(void)
 
 
 #if WITH_TEMPERATURE
-	g_data.temperature = ((float) raw_agt[3]) / 333.87 + 21.0;
+	g_data.imu_temperature = ((float) raw_agt[3]) / 333.87 + 21.0;
 #endif
 
 
@@ -336,10 +332,9 @@ void loop(void)
 		g_data.mz *= magScale[2];
 	}
 
-#if WITH_DATA_TO_PC
 	/* Send every new data from IMU to PC. */
 	send_to_pc(g_data);
-#endif
+
 	newData = false;  /* Reset newData flag. */
 
 
@@ -359,7 +354,7 @@ void loop(void)
 
 #if WITH_TEMPERATURE
 		if (serial_debug_temperature) {
-			Serial.print("Chip temperature is "); Serial.print(g_data.temperature, 3); Serial.println(" degrees C");
+			Serial.print("Chip temperature is "); Serial.print(g_data.imu_temperature, 3); Serial.println(" degrees C");
 		}
 #endif
 
@@ -923,10 +918,11 @@ void debug_print_data(const data_t & data)
 
 
 
-#if WITH_DATA_TO_PC
 void send_to_pc(data_t & data)
 {
-	const uint8_t header[6] = { 0x17, 0x6b, 0x61, 0x6d, 0x69, 0x6c };
+	const uint8_t header[HEADER_SIZE] = { HEADER_BEGIN, HEADER_BYTE_1, HEADER_BYTE_2, HEADER_BYTE_3, HEADER_BYTE_4, HEADER_BYTE_5 };
+
+	data.counter++; /* First sent counter will have value 1. */
 
 
 	/* Error detection: calculate checksum.
@@ -945,4 +941,3 @@ void send_to_pc(data_t & data)
 	Serial.write(bytes, data_size);
 	Serial.write(bytes, data_size);
 }
-#endif

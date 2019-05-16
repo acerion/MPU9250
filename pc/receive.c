@@ -25,12 +25,9 @@
 
 
 
-
 #define STATE_TEXT     0
 #define STATE_DATA     1
 
-#define HEADER_BEGIN   0x17
-#define HEADER_SIZE       6
 
 
 
@@ -44,12 +41,13 @@ struct {
 
 	size_t i;
 	int state;
+	uint32_t previous_counter;
 } receiver;
 
 
 
 
-static uint8_t expected_header[HEADER_SIZE] = { HEADER_BEGIN, 0x6b, 0x61, 0x6d, 0x69, 0x6c };
+static uint8_t expected_header[HEADER_SIZE] = { HEADER_BEGIN, HEADER_BYTE_1, HEADER_BYTE_2, HEADER_BYTE_3, HEADER_BYTE_4, HEADER_BYTE_5 };
 static char file_name[64] = "/dev/ttyUSB0";
 
 
@@ -165,17 +163,38 @@ void handle_received_data(struct received * received)
 			received->data_a.checksum, received->data_b.checksum);
 	}
 
+
+	data_t * data = NULL;
+	char id = ' ';
+	bool counter_ok;
+
 	if (is_checksum_valid(&received->data_a)) {
-		print_data(&received->data_a, 'a');
-		return;
+		data = &received->data_a;
+		id = 'a';
+		goto label_print;
 	}
 	fprintf(stderr, "[EE] Checksum of data A can't be verified\n");
 
 	if (is_checksum_valid(&received->data_b)) {
-		print_data(&received->data_b, 'b');
-		return;
+		data = &received->data_b;
+		id = 'b';
+		goto label_print;
 	}
 	fprintf(stderr, "[EE] Checksum of data B can't be verified\n");
+
+	return;
+
+
+ label_print:
+
+	counter_ok = (data->counter == receiver.previous_counter + 1);
+	if (!counter_ok) {
+		fprintf(stderr, "[EE] Missing %d packets\n", data->counter - (receiver.previous_counter + 1));
+	}
+	receiver.previous_counter = data->counter;
+
+	print_data(data, id);
+	return;
 }
 
 
@@ -207,19 +226,22 @@ void print_data(data_t * data, char id)
 	static uint32_t timestamp_previous = 0;
 	const uint32_t delta = data->timestamp - timestamp_previous;
 
-	fprintf(stderr, "Data %c  "
-		"time: %15lu/%6lu [us]/%5.1f [Hz]  | "
+
+	fprintf(stderr, "Data %c,  "
+		"counter: %12lu  "
+		"time: %6lu [us]/%5.1f [Hz]  | "
 		"acc:  %12.6f  %12.6f  %12.6f  | "
 		"gyro: %11.6f  %11.6f  %11.6f  | "
 		"mag (%s):  %11.6f  %11.6f  %11.6f  | "
 		"temp: %6.2f\n",
 		id,
-		(long unsigned) data->timestamp, (long unsigned) delta,
+		(long unsigned) data->counter,
+		(long unsigned) delta,
 		(1.0 / (delta / 1000000.0)),
 		1000.0 * data->ax, 1000.0 * data->ay, 1000.0 * data->az,
 		data->gx, data->gy, data->gz,
 		data->new_mag_data_ready ? "new" : "old", data->mx, data->my, data->mz,
-		data->temperature);
+		data->imu_temperature);
 
 	timestamp_previous = data->timestamp;
 }

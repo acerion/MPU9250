@@ -26,14 +26,26 @@
 #define WITH_LOCAL_DISPLAY  0
 
 
-/* Do we want to send data (primarily measurements) to PC over serial? */
-#define WITH_DATA_TO_PC     1
+#define HEADER_SIZE       6
+#define HEADER_BEGIN   0x17
+#define HEADER_BYTE_1  0x6b
+#define HEADER_BYTE_2  0x61
+#define HEADER_BYTE_3  0x6d
+#define HEADER_BYTE_4  0x69
+#define HEADER_BYTE_5  0x6c
 
 
 
 
 /* Sensor data values calculated from raw values. */
 typedef struct {
+	uint32_t timestamp; /* [microseconds] */
+
+	/* Packet counter increased with every transmission from
+	   Arduino to PC. Used to detect missing transmissions.
+	   First sent counter will have value 1. */
+	uint32_t counter;
+
 	/* Acceleration. */
 	float ax;
 	float ay;
@@ -49,18 +61,19 @@ typedef struct {
 	float my;
 	float mz;
 
-	/* In theory we should enable/disable this field based on
+	/* Temperature read from IMU chip [Celsius degrees].
+
+	   In theory we should enable/disable this field based on
 	   value of WITH_TEMPERATURE, but since this struct will may
 	   be sent to PC, let's keep number of its member constant for
 	   easier maintenance and interoperability. */
-	float temperature;
+	float imu_temperature;
 
+	/* When trying to read data from IMU magnetometer, did the
+	   magnetometer report that there was new data to be read? */
 	uint8_t new_mag_data_ready;
 
-#if WITH_DATA_TO_PC
-	uint32_t timestamp; /* [microseconds] */
 	uint8_t checksum;
-#endif
 } __attribute__((packed)) data_t;
 
 
