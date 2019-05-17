@@ -75,16 +75,8 @@
 const uint32_t serial_baud_rate = 115200;
 
 
+const uint32_t blink_interval_us = 500000; /* [microseconds] */
 
-
-/*
-  [milliseconds] Interval between debug printing new data on serial
-  console.  This value is independent of sensor of filter data rates.
-*/
-const int serial_debug_interval = 100;
-
-/* Show accel, gyro, mag measurements on serial line. */
-const bool serial_debug_meas = true;
 
 #if WITH_TEMPERATURE
 /* Show temperature on serial line. */
@@ -154,9 +146,6 @@ float SelfTest[6];
 /* Variable to hold latest sensor data values calculated from raw values. */
 data_t g_data;
 
-/* Used to control rate of displaying data on serial port. */
-uint32_t display_time_prev = 0;
-
 
 
 
@@ -183,8 +172,17 @@ void send_to_pc(data_t & data);
 
 
 
+#define BLINK digitalWrite(ledPin, !digitalRead(ledPin));
+
+
+
+
 void setup(void)
 {
+	pinMode(ledPin, OUTPUT);
+	digitalWrite(ledPin, HIGH);
+
+
 	Wire.begin();
 	// TWBR = 12;  // 400 kbit/sec I2C speed for Pro Mini
 	Serial.begin(serial_baud_rate);
@@ -192,9 +190,7 @@ void setup(void)
 	Serial.println("\n\nMicrocontroller is online\n");
 	delay(3000);
 
-	pinMode(ledPin, OUTPUT);
-	digitalWrite(ledPin, HIGH);
-
+	BLINK;
 
 	/* Read the WHO_AM_I register, this is a good test of communication. */
 	byte who = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
@@ -233,7 +229,7 @@ void setup(void)
 	initMPU9250();
 	Serial.println("\nMPU9250 initialized for active data mode\n");
 
-
+	BLINK;
 
 	/* Read the WHO_AM_I register of the magnetometer,
 	   this is a good test of communication. */
@@ -259,7 +255,7 @@ void setup(void)
 	Serial.print("    z-axis sensitivity adjustment value: "); Serial.println(magCalibration[2], 2);
 	Serial.print("\n");
 
-
+	BLINK;
 
 	/* Add delay to see results before serial spew of data. */
 	delay(1000);
@@ -343,13 +339,12 @@ void loop(void)
 
 
 
-#if WITH_LOCAL_DISPLAY
-	const uint32_t display_time_now = millis();
-	if ((display_time_now - display_time_prev) > serial_debug_interval) {
+	const uint32_t blink_time_now = g_data.timestamp;
+	static uint32_t blink_time_prev = 0;
+	if ((blink_time_now - blink_time_prev) > blink_interval_us) {
 
-		if (serial_debug_data) {
-			debug_print_data(g_data);
-		}
+#if WITH_LOCAL_DISPLAY
+		debug_print_data(g_data);
 
 
 #if WITH_TEMPERATURE
@@ -357,12 +352,11 @@ void loop(void)
 			Serial.print("Chip temperature is "); Serial.print(g_data.imu_temperature, 3); Serial.println(" degrees C");
 		}
 #endif
-
-
-		digitalWrite(ledPin, !digitalRead(ledPin));
-		display_time_prev = millis();
-	}
 #endif /* if WITH_LOCAL_DISPLAY */
+
+		BLINK;
+		blink_time_prev = blink_time_now;
+	}
 }
 
 
