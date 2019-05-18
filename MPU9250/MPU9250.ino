@@ -78,12 +78,6 @@ const uint32_t serial_baud_rate = 115200;
 const uint32_t blink_interval_us = 500000; /* [microseconds] */
 
 
-#if WITH_TEMPERATURE
-/* Show temperature on serial line. */
-const bool serial_debug_temperature = true;
-#endif
-
-
 
 
 /* TODO: hex values 0x00, 0x01, 0x10, 0x11? */
@@ -165,7 +159,6 @@ void MPU9250SelfTest(float * destination);
 void accelGyroCalMPU9250(float * dest_g_bias, float * dest_a_bias);
 void magCalMPU9250(float * dest_bias, float * dest_scale);
 
-void debug_print_data(const data_t & data);
 
 void send_to_pc(data_t & data);
 
@@ -342,18 +335,6 @@ void loop(void)
 	const uint32_t blink_time_now = g_data.timestamp;
 	static uint32_t blink_time_prev = 0;
 	if ((blink_time_now - blink_time_prev) > blink_interval_us) {
-
-#if WITH_LOCAL_DISPLAY
-		debug_print_data(g_data);
-
-
-#if WITH_TEMPERATURE
-		if (serial_debug_temperature) {
-			Serial.print("Chip temperature is "); Serial.print(g_data.imu_temperature, 3); Serial.println(" degrees C");
-		}
-#endif
-#endif /* if WITH_LOCAL_DISPLAY */
-
 		BLINK;
 		blink_time_prev = blink_time_now;
 	}
@@ -891,22 +872,6 @@ void MPU9250SelfTest(float * destination)
 		destination[i]   = 100.0 * ((float) (aSTAvg[i] - aAvg[i]))/factoryTrim[i] - 100.0;   // Report percent differences
 		destination[i+3] = 100.0 * ((float) (gSTAvg[i] - gAvg[i]))/factoryTrim[i+3] - 100.0; // Report percent differences
 	}
-}
-
-
-
-
-void debug_print_data(const data_t & data)
-{
-	Serial.print("ax = "); Serial.print((int) 1000 * data.ax);
-	Serial.print(" ay = "); Serial.print((int) 1000 * data.ay);
-	Serial.print(" az = "); Serial.print((int) 1000 * data.az); Serial.print(" mg,");
-	Serial.print(" gx = "); Serial.print(data.gx, 2);
-	Serial.print(" gy = "); Serial.print(data.gy, 2);
-	Serial.print(" gz = "); Serial.print(data.gz, 2); Serial.print(" deg/s,");
-	Serial.print(" mx = "); Serial.print((int) data.mx);
-	Serial.print(" my = "); Serial.print((int) data.my);
-	Serial.print(" mz = "); Serial.print((int) data.mz); Serial.println(" mG");
 }
 
 
