@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -9,10 +10,18 @@
 #include <unistd.h>
 
 #include <errno.h>
+#include <getopt.h>
 
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>
+
+#include <time.h>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 
 
 
@@ -56,18 +65,54 @@ static char file_name[64] = "/dev/ttyUSB0";
 static int configure_fd(int fd);
 static void handle_byte(uint8_t c);
 static void handle_received_data(struct received * data);
-static void print_data(data_t * data, char id);
+static void print_data_locally(data_t * data, char id);
 static bool is_checksum_valid(data_t * data);
 
 
 
 
-int main(void)
+static void close_socket(void);
+static int create_socket(const char * server_address, int server_port);
+static void send_to_ahrs_engine(int sock, const uint8_t * data, size_t size);
+
+static bool g_send_to_ahrs_engine = false;
+static int g_ahrs_engine_socket = 0;
+static char * g_ahrs_engine_address = "127.0.0.1";
+static int g_ahrs_engine_port = 4567;
+
+
+
+
+int main(int argc, char ** argv)
 {
+	int opt;
+	while ((opt = getopt(argc, argv, "eh")) != -1) {
+		switch (opt) {
+		case 'e':
+			g_send_to_ahrs_engine = true;
+			break;
+		case 'h':
+		default:
+			fprintf(stderr, "Usage: %s [-e]\n", argv[0]);
+			fprintf(stderr, "        -e: send data to AHRS engine over network\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	if (g_send_to_ahrs_engine) {
+		g_ahrs_engine_socket = create_socket(g_ahrs_engine_address, g_ahrs_engine_port);
+		if (g_ahrs_engine_socket == -1) {
+			exit(EXIT_FAILURE);
+		}
+		atexit(close_socket);
+	}
+
+
+
 	int fd = open(file_name, O_RDWR | O_NOCTTY);
 	if (fd < 0) {
 		fprintf(stderr, "[EE] Can't open '%s': %s\n", file_name, strerror(errno));
-		return -1;
+		exit(EXIT_FAILURE);
 	}
 
 	configure_fd(fd);
@@ -96,7 +141,7 @@ int main(void)
 		}
 	} while (1);
 
-	return 0;
+	exit(EXIT_SUCCESS);
 }
 
 
@@ -171,21 +216,21 @@ void handle_received_data(struct received * received)
 	if (is_checksum_valid(&received->data_a)) {
 		data = &received->data_a;
 		id = 'a';
-		goto label_print;
+		goto label_valid_data;
 	}
 	fprintf(stderr, "[EE] Checksum of data A can't be verified\n");
 
 	if (is_checksum_valid(&received->data_b)) {
 		data = &received->data_b;
 		id = 'b';
-		goto label_print;
+		goto label_valid_data;
 	}
 	fprintf(stderr, "[EE] Checksum of data B can't be verified\n");
 
 	return;
 
 
- label_print:
+ label_valid_data:
 
 	counter_ok = (data->counter == receiver.previous_counter + 1);
 	if (!counter_ok) {
@@ -193,7 +238,18 @@ void handle_received_data(struct received * received)
 	}
 	receiver.previous_counter = data->counter;
 
-	print_data(data, id);
+
+
+	print_data_locally(data, id);
+
+
+
+	if (g_send_to_ahrs_engine) {
+		time_t now = time(0);
+		send_to_ahrs_engine(g_ahrs_engine_socket, (uint8_t *) &now, sizeof (now));
+	}
+
+
 	return;
 }
 
@@ -221,7 +277,7 @@ bool is_checksum_valid(data_t * data)
 
 
 
-void print_data(data_t * data, char id)
+void print_data_locally(data_t * data, char id)
 {
 	static uint32_t timestamp_previous = 0;
 	const uint32_t delta = data->timestamp - timestamp_previous;
@@ -296,4 +352,65 @@ int configure_fd(int fd)
 	}
 
 	return 0;
+}
+
+
+
+
+void close_socket(void)
+{
+	if (0 != g_ahrs_engine_socket) {
+		shutdown(g_ahrs_engine_socket, SHUT_RDWR);
+		close(g_ahrs_engine_socket);
+		g_ahrs_engine_socket = 0;
+	}
+}
+
+
+
+
+int create_socket(const char * server_address, int server_port)
+{
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (-1 == sock) {
+		fprintf(stderr, "[EE] socket() failed: %s\n", strerror(errno));
+		return -1;
+	}
+
+
+	struct sockaddr_in servaddr;
+	memset(&servaddr, 0, sizeof (servaddr));
+	servaddr.sin_family = AF_INET;
+	servaddr.sin_addr.s_addr = inet_addr(server_address);
+	servaddr.sin_port = htons(server_port);
+
+
+	if (0 != connect(sock, (struct sockaddr *) &servaddr, sizeof (servaddr))) {
+		fprintf(stderr, "[EE] connect() failed: %s\n", strerror(errno));
+		return -1;
+	}
+	fprintf(stderr, "[II] Connected to server\n");
+
+
+	return sock;
+}
+
+
+
+
+void send_to_ahrs_engine(int sock, const uint8_t * buffer, size_t size)
+{
+	if (sock <= 0) {
+		fprintf(stderr, "[EE] Invalid socket\n");
+		return;
+	}
+
+	const int n = write(sock, buffer, size);
+	if (n < 0) {
+		fprintf(stderr, "[EE] write() failed: %s\n", strerror(errno));
+	} else if (n == 0) {
+		fprintf(stderr, "[NN] Can't write to socket\n");
+	} else {
+		;
+	}
 }
