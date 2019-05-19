@@ -39,7 +39,7 @@
 
 /* Sensor data values calculated from raw values. */
 typedef struct {
-	uint32_t timestamp; /* [microseconds] */
+	uint32_t timestamp_us; /* [microseconds] */
 
 	/* Packet counter increased with every transmission from
 	   Arduino to PC. Used to detect missing transmissions.

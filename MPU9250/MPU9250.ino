@@ -281,7 +281,7 @@ void loop(void)
 	}
 
 
-	g_dataset.timestamp = micros();
+	g_dataset.timestamp_us = micros();
 
 	/* On interrupt, read data. */
 	readMPU9250Data(raw_agt); // INT cleared on any read
@@ -332,11 +332,11 @@ void loop(void)
 
 
 
-	const uint32_t blink_time_now = g_dataset.timestamp;
-	static uint32_t blink_time_prev = 0;
-	if ((blink_time_now - blink_time_prev) > blink_interval_us) {
+	const uint32_t blink_time_now_us = g_dataset.timestamp_us;
+	static uint32_t blink_time_prev_us = 0;
+	if ((blink_time_now_us - blink_time_prev_us) > blink_interval_us) {
 		BLINK;
-		blink_time_prev = blink_time_now;
+		blink_time_prev_us = blink_time_now_us;
 	}
 }
 

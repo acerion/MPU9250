@@ -293,9 +293,9 @@ bool is_checksum_valid(imu_dataset_t * dataset)
 
 void print_dataset_locally(imu_dataset_t * dataset, char id)
 {
-	static uint32_t timestamp_previous = 0;
-	const uint32_t delta = dataset->timestamp - timestamp_previous;
-
+	static uint32_t timestamp_previous_us = 0;
+	const uint32_t delta_us = dataset->timestamp_us - timestamp_previous_us;
+	const float delta_s = delta_us / 1000000.0;
 
 	fprintf(stderr, "Dataset %c, "
 		"counter: %12lu  "
@@ -306,14 +306,14 @@ void print_dataset_locally(imu_dataset_t * dataset, char id)
 		"temp: %6.2f\n",
 		id,
 		(long unsigned) dataset->counter,
-		(long unsigned) delta,
-		(1.0 / (delta / 1000000.0)),
+		(long unsigned) delta_us,
+		(1.0 / delta_s),
 		1000.0 * dataset->ax, 1000.0 * dataset->ay, 1000.0 * dataset->az,
 		dataset->gx, dataset->gy, dataset->gz,
 		dataset->new_mag_data_ready ? "new" : "old", dataset->mx, dataset->my, dataset->mz,
 		dataset->imu_temperature);
 
-	timestamp_previous = dataset->timestamp;
+	timestamp_previous_us = dataset->timestamp_us;
 }
 
 
