@@ -138,7 +138,7 @@ float magScale[3] = {0, 0, 0};
 float SelfTest[6];
 
 /* Variable to hold latest sensor data values calculated from raw values. */
-data_t g_data;
+imu_dataset_t g_dataset;
 
 
 
@@ -160,7 +160,7 @@ void accelGyroCalMPU9250(float * dest_g_bias, float * dest_a_bias);
 void magCalMPU9250(float * dest_bias, float * dest_scale);
 
 
-void send_to_pc(data_t & data);
+void send_to_pc(imu_dataset_t & dataset);
 
 
 
@@ -281,7 +281,7 @@ void loop(void)
 	}
 
 
-	g_data.timestamp = micros();
+	g_dataset.timestamp = micros();
 
 	/* On interrupt, read data. */
 	readMPU9250Data(raw_agt); // INT cleared on any read
@@ -289,40 +289,40 @@ void loop(void)
 
 	/* Convert the acceleration value into actual
 		   meters per second^2. This depends on scale being set. */
-	g_data.ax = (float) raw_agt[0] * aRes - accelBias[0];
-	g_data.ay = (float) raw_agt[1] * aRes - accelBias[1];
-	g_data.az = (float) raw_agt[2] * aRes - accelBias[2];
+	g_dataset.ax = (float) raw_agt[0] * aRes - accelBias[0];
+	g_dataset.ay = (float) raw_agt[1] * aRes - accelBias[1];
+	g_dataset.az = (float) raw_agt[2] * aRes - accelBias[2];
 
 
 	/* Convert the gyro value into actual degrees per
 	   second. This depends on scale being set. */
-	g_data.gx = (float) raw_agt[4] * gRes;
-	g_data.gy = (float) raw_agt[5] * gRes;
-	g_data.gz = (float) raw_agt[6] * gRes;
+	g_dataset.gx = (float) raw_agt[4] * gRes;
+	g_dataset.gy = (float) raw_agt[5] * gRes;
+	g_dataset.gz = (float) raw_agt[6] * gRes;
 
 
 #if WITH_TEMPERATURE
-	g_data.imu_temperature = ((float) raw_agt[3]) / 333.87 + 21.0;
+	g_dataset.imu_temperature = ((float) raw_agt[3]) / 333.87 + 21.0;
 #endif
 
 
-	g_data.new_mag_data_ready = readMagData(raw_mag);
-	if (g_data.new_mag_data_ready) {
+	g_dataset.new_mag_data_ready = readMagData(raw_mag);
+	if (g_dataset.new_mag_data_ready) {
 		/* Calculate the magnetometer values in
 		   milliGauss.  Include factory calibration
 		   per data sheet and user environmental
 		   corrections. Calculated value depends on
 		   scale being set*/
-		g_data.mx = (float) raw_mag[0] * mRes * magCalibration[0] - magBias[0];
-		g_data.my = (float) raw_mag[1] * mRes * magCalibration[1] - magBias[1];
-		g_data.mz = (float) raw_mag[2] * mRes * magCalibration[2] - magBias[2];
-		g_data.mx *= magScale[0];
-		g_data.my *= magScale[1];
-		g_data.mz *= magScale[2];
+		g_dataset.mx = (float) raw_mag[0] * mRes * magCalibration[0] - magBias[0];
+		g_dataset.my = (float) raw_mag[1] * mRes * magCalibration[1] - magBias[1];
+		g_dataset.mz = (float) raw_mag[2] * mRes * magCalibration[2] - magBias[2];
+		g_dataset.mx *= magScale[0];
+		g_dataset.my *= magScale[1];
+		g_dataset.mz *= magScale[2];
 	}
 
 	/* Send every new data from IMU to PC. */
-	send_to_pc(g_data);
+	send_to_pc(g_dataset);
 
 	newData = false;  /* Reset newData flag. */
 
@@ -332,7 +332,7 @@ void loop(void)
 
 
 
-	const uint32_t blink_time_now = g_data.timestamp;
+	const uint32_t blink_time_now = g_dataset.timestamp;
 	static uint32_t blink_time_prev = 0;
 	if ((blink_time_now - blink_time_prev) > blink_interval_us) {
 		BLINK;
@@ -877,26 +877,26 @@ void MPU9250SelfTest(float * destination)
 
 
 
-void send_to_pc(data_t & data)
+void send_to_pc(imu_dataset_t & dataset)
 {
 	const uint8_t header[HEADER_SIZE] = { HEADER_BEGIN, HEADER_BYTE_1, HEADER_BYTE_2, HEADER_BYTE_3, HEADER_BYTE_4, HEADER_BYTE_5 };
 
-	data.counter++; /* First sent counter will have value 1. */
+	dataset.counter++; /* First sent counter will have value 1. */
 
 
 	/* Error detection: calculate checksum.
 	   https://en.wikipedia.org/wiki/Error_detection_and_correction#Checksums */
-	const size_t data_size = sizeof (data_t);
-	const uint8_t * bytes = (uint8_t *) &data;
-	data.checksum = 0x00;
-	for (size_t i = 0; i < data_size - 1; i++) { /* Don't include last byte in the struct, i.e. the checksum byte. */
-		data.checksum ^= bytes[i];
+	const size_t dataset_size = sizeof (imu_dataset_t);
+	const uint8_t * bytes = (uint8_t *) &dataset;
+	dataset.checksum = 0x00;
+	for (size_t i = 0; i < dataset_size - 1; i++) { /* Don't include last byte in the struct, i.e. the checksum byte. */
+		dataset.checksum ^= bytes[i];
 	}
 
 
 	Serial.write(header, 6);
-	/* Error correction: repetition code (send the data (and checksum) twice).
+	/* Error correction: repetition code (send the data set (and checksum) twice).
 	   https://en.wikipedia.org/wiki/Repetition_code */
-	Serial.write(bytes, data_size);
-	Serial.write(bytes, data_size);
+	Serial.write(bytes, dataset_size);
+	Serial.write(bytes, dataset_size);
 }

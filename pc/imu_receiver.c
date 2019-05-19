@@ -1,22 +1,17 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <getopt.h>
+#include <ctype.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <termios.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
-#include <termios.h>
-#include <unistd.h>
-
-#include <errno.h>
-#include <getopt.h>
-
-#include <ctype.h>
-#include <stdbool.h>
-#include <stdint.h>
-
-#include <time.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -26,6 +21,7 @@
 
 
 #include "../MPU9250/MPU9250.h"
+
 
 
 
@@ -40,33 +36,38 @@
 
 
 
-struct {
+typedef struct {
+	int state;
+	size_t i;
+	uint32_t previous_counter;
+
 	struct received {
 		uint8_t header[HEADER_SIZE];
 
-		data_t data_a;
-		data_t data_b;
-	} __attribute__((packed)) data;
-
-	size_t i;
-	int state;
-	uint32_t previous_counter;
+		imu_dataset_t dataset_a;
+		imu_dataset_t dataset_b;
+	} __attribute__((packed)) received;
 } receiver;
+
+static receiver g_receiver;
 
 
 
 
 static uint8_t expected_header[HEADER_SIZE] = { HEADER_BEGIN, HEADER_BYTE_1, HEADER_BYTE_2, HEADER_BYTE_3, HEADER_BYTE_4, HEADER_BYTE_5 };
-static char file_name[64] = "/dev/ttyUSB0";
+
+static char g_serial_file_full_path[64] = "/dev/ttyUSB0";
+static int g_serial_fd = 0;
 
 
 
-
-static int configure_fd(int fd);
-static void handle_byte(uint8_t c);
-static void handle_received_data(struct received * data);
-static void print_data_locally(data_t * data, char id);
-static bool is_checksum_valid(data_t * data);
+static void close_serial_fd(void);
+static int get_serial_fd(const char * full_path);
+static void handle_byte(receiver * rec, uint8_t c);
+static void handle_received_data(receiver * rec);
+static void print_dataset_locally(imu_dataset_t * dataset, char id);
+static bool is_checksum_valid(imu_dataset_t * dataset);
+static void reset_receiver(receiver * rec);
 
 
 
@@ -99,6 +100,7 @@ int main(int argc, char ** argv)
 		}
 	}
 
+
 	if (g_send_to_ahrs_engine) {
 		g_ahrs_engine_socket = create_socket(g_ahrs_engine_address, g_ahrs_engine_port);
 		if (g_ahrs_engine_socket == -1) {
@@ -108,27 +110,26 @@ int main(int argc, char ** argv)
 	}
 
 
-
-	int fd = open(file_name, O_RDWR | O_NOCTTY);
-	if (fd < 0) {
-		fprintf(stderr, "[EE] Can't open '%s': %s\n", file_name, strerror(errno));
+	g_serial_fd = get_serial_fd(g_serial_file_full_path);
+	if (g_serial_fd <= 0) {
+		fprintf(stderr, "[EE] Can't open serial line file '%s'\n", g_serial_file_full_path);
 		exit(EXIT_FAILURE);
 	}
+	atexit(close_serial_fd);
 
-	configure_fd(fd);
 
 	do {
 		uint8_t c;
-		const int n_read = read(fd, &c, 1);
+		const int n_read = read(g_serial_fd, &c, 1);
 		if (n_read > 0) {
-			switch (receiver.state) {
+			switch (g_receiver.state) {
 			case STATE_DATA:
-				handle_byte(c);
+				handle_byte(&g_receiver, c);
 				break;
 			case STATE_TEXT:
 			default:
 				if (c == HEADER_BEGIN) {
-					handle_byte(c);
+					handle_byte(&g_receiver, c);
 				} else {
 					fprintf(stderr, "%c", c);
 				}
@@ -138,56 +139,59 @@ int main(int argc, char ** argv)
 			fprintf(stderr, "[EE] read() error: %d/ %s\n", n_read, strerror(errno));
 		} else {  /* n_read == 0 */
 			fprintf(stderr, "[EE] read() timeout\n");
+			if (0 != access(g_serial_file_full_path, F_OK)) {
+				fprintf(stderr, "[EE] Serial line file no longer exists\n");
+				goto loop_err;
+			}
+			sleep(1); /* To avoid fast looping on error. */
 		}
 	} while (1);
 
+
 	exit(EXIT_SUCCESS);
+
+ loop_err:
+	exit(EXIT_FAILURE);
 }
 
 
 
 
-void handle_byte(uint8_t c)
+void handle_byte(receiver * rec, uint8_t c)
 {
-	if (receiver.state == STATE_TEXT) {
+	if (rec->state == STATE_TEXT) {
 		if (HEADER_BEGIN != c) {
 			fprintf(stderr, "[EE] Expected beginning of header, received 0x%02x\n", c);
 			return;
 		}
 	}
-	receiver.state = STATE_DATA;
+	rec->state = STATE_DATA;
 
-	uint8_t * bytes = (uint8_t *) &receiver.data;
-	const size_t data_size = sizeof (receiver.data);
+	uint8_t * bytes = (uint8_t *) &rec->received;
+	const size_t data_size = sizeof (rec->received);
 
-	bytes[receiver.i] = c;
-	receiver.i++;
+	bytes[rec->i] = c;
+	rec->i++;
 
-	if (receiver.i == HEADER_SIZE) {
-		if (0 != memcmp(receiver.data.header, expected_header, HEADER_SIZE)) {
+	if (rec->i == HEADER_SIZE) {
+		if (0 != memcmp(rec->received.header, expected_header, HEADER_SIZE)) {
 			fprintf(stderr, "[EE] Failed to capture header: %x %x %x %x %x %x, going back to TEXT state\n",
-				receiver.data.header[0],
-				receiver.data.header[1],
-				receiver.data.header[2],
-				receiver.data.header[3],
-				receiver.data.header[4],
-				receiver.data.header[5]);
+				rec->received.header[0],
+				rec->received.header[1],
+				rec->received.header[2],
+				rec->received.header[3],
+				rec->received.header[4],
+				rec->received.header[5]);
 
-			/* Reset receiver. */
-			receiver.state = STATE_TEXT;
-			receiver.i = 0;
-			memset(receiver.data.header, 0, HEADER_SIZE);
+			reset_receiver(rec);
 		} else {
 			/* Received correct header, start receiving data. */
 		}
 
-	} else if (receiver.i == data_size) {
-		handle_received_data(&receiver.data);
-
-		/* Reset receiver. */
-		receiver.i = 0;
-		receiver.state = STATE_TEXT;
-		memset(&receiver.data, 0, data_size);
+	} else if (rec->i == data_size) {
+		/* Full set of data (one packet) received. */
+		handle_received_data(rec);
+		reset_receiver(rec);
 	} else {
 		; /* Continue receiving header or data. */
 	}
@@ -198,55 +202,65 @@ void handle_byte(uint8_t c)
 
 
 
-void handle_received_data(struct received * received)
+void reset_receiver(receiver * rec)
 {
-	if (0 != memcmp(&received->data_a, &received->data_b, sizeof (data_t))) {
-		fprintf(stderr, "[EE] Data contents mismatch\n");
+	rec->state = STATE_TEXT;
+	rec->i = 0;
+	/* Don't touch ::previous_counter. */
+	memset(&rec->received, 0, sizeof (rec->received));
+}
+
+
+
+
+void handle_received_data(receiver * rec)
+{
+	if (0 != memcmp(&rec->received.dataset_a, &rec->received.dataset_b, sizeof (imu_dataset_t))) {
+		fprintf(stderr, "[EE] Dataset contents mismatch\n");
 	}
-	if (received->data_a.checksum != received->data_b.checksum) {
+	if (rec->received.dataset_a.checksum != rec->received.dataset_b.checksum) {
 		fprintf(stderr, "[EE] Checksum bytes mismatch (checksum A = 0x%02x, checksum B = 0x%02x)\n",
-			received->data_a.checksum, received->data_b.checksum);
+			rec->received.dataset_a.checksum, rec->received.dataset_b.checksum);
 	}
 
 
-	data_t * data = NULL;
+	imu_dataset_t * dataset = NULL;
 	char id = ' ';
 	bool counter_ok;
 
-	if (is_checksum_valid(&received->data_a)) {
-		data = &received->data_a;
+	if (is_checksum_valid(&rec->received.dataset_a)) {
+		dataset = &rec->received.dataset_a;
 		id = 'a';
 		goto label_valid_data;
 	}
-	fprintf(stderr, "[EE] Checksum of data A can't be verified\n");
+	fprintf(stderr, "[EE] Checksum of dataset A can't be verified\n");
 
-	if (is_checksum_valid(&received->data_b)) {
-		data = &received->data_b;
+	if (is_checksum_valid(&rec->received.dataset_b)) {
+		dataset = &rec->received.dataset_b;
 		id = 'b';
 		goto label_valid_data;
 	}
-	fprintf(stderr, "[EE] Checksum of data B can't be verified\n");
+	fprintf(stderr, "[EE] Checksum of dataset B can't be verified\n");
 
 	return;
 
 
  label_valid_data:
 
-	counter_ok = (data->counter == receiver.previous_counter + 1);
+	counter_ok = (dataset->counter == rec->previous_counter + 1);
 	if (!counter_ok) {
-		fprintf(stderr, "[EE] Missing %d packets\n", data->counter - (receiver.previous_counter + 1));
+		fprintf(stderr, "[EE] Missing %d packets\n", dataset->counter - (rec->previous_counter + 1));
 	}
-	receiver.previous_counter = data->counter;
+	rec->previous_counter = dataset->counter;
 
 
 
-	print_data_locally(data, id);
+	print_dataset_locally(dataset, id);
 
 
 
 	if (g_send_to_ahrs_engine) {
-		time_t now = time(0);
-		send_to_ahrs_engine(g_ahrs_engine_socket, (uint8_t *) &now, sizeof (now));
+		send_to_ahrs_engine(g_ahrs_engine_socket, (uint8_t *) dataset, sizeof (imu_dataset_t));
 	}
 
 
@@ -256,20 +270,20 @@ void handle_received_data(struct received * received)
 
 
 
-bool is_checksum_valid(data_t * data)
+bool is_checksum_valid(imu_dataset_t * dataset)
 {
 	uint8_t calculated = 0x00;
-	const uint8_t * bytes = (uint8_t *) data;
+	const uint8_t * bytes = (uint8_t *) dataset;
 
-	for (size_t i = 0; i < sizeof (data_t) - 1; i++) { /* -1: don't include checksum byte. */
+	for (size_t i = 0; i < sizeof (imu_dataset_t) - 1; i++) { /* -1: don't include checksum byte. */
 		calculated ^= bytes[i];
 	}
 
-	if (calculated != data->checksum) {
-		fprintf(stderr, "[EE] Checksum mismatch: calculated 0x%02x != received 0x%02x\n", calculated, data->checksum);
+	if (calculated != dataset->checksum) {
+		fprintf(stderr, "[EE] Checksum mismatch: calculated 0x%02x != received 0x%02x\n", calculated, dataset->checksum);
 		return false;
 	} else {
-		//fprintf(stderr, "[II] Checksum match: calculated 0x%02x == received 0x%02x\n", calculated, data->checksum);
+		//fprintf(stderr, "[II] Checksum match: calculated 0x%02x == received 0x%02x\n", calculated, dataset->checksum);
 		return true;
 	}
 }
@@ -277,40 +291,46 @@ bool is_checksum_valid(data_t * data)
 
 
 
-void print_data_locally(data_t * data, char id)
+void print_dataset_locally(imu_dataset_t * dataset, char id)
 {
 	static uint32_t timestamp_previous = 0;
-	const uint32_t delta = data->timestamp - timestamp_previous;
+	const uint32_t delta = dataset->timestamp - timestamp_previous;
 
 
-	fprintf(stderr, "Data %c,  "
+	fprintf(stderr, "Dataset %c, "
 		"counter: %12lu  "
-		"time: %6lu [us]/%5.1f [Hz]  | "
-		"acc:  %12.6f  %12.6f  %12.6f  | "
-		"gyro: %11.6f  %11.6f  %11.6f  | "
-		"mag (%s):  %11.6f  %11.6f  %11.6f  | "
+		"time: %6lu [us]/%5.1f [Hz] | "
+		"acc:  %12.6f  %12.6f  %12.6f | "
+		"gyro: %11.6f  %11.6f  %11.6f | "
+		"mag (%s):  %11.6f  %11.6f  %11.6f | "
 		"temp: %6.2f\n",
 		id,
-		(long unsigned) data->counter,
+		(long unsigned) dataset->counter,
 		(long unsigned) delta,
 		(1.0 / (delta / 1000000.0)),
-		1000.0 * data->ax, 1000.0 * data->ay, 1000.0 * data->az,
-		data->gx, data->gy, data->gz,
-		data->new_mag_data_ready ? "new" : "old", data->mx, data->my, data->mz,
-		data->imu_temperature);
+		1000.0 * dataset->ax, 1000.0 * dataset->ay, 1000.0 * dataset->az,
+		dataset->gx, dataset->gy, dataset->gz,
+		dataset->new_mag_data_ready ? "new" : "old", dataset->mx, dataset->my, dataset->mz,
+		dataset->imu_temperature);
 
-	timestamp_previous = data->timestamp;
+	timestamp_previous = dataset->timestamp;
 }
 
 
 
 
-int configure_fd(int fd)
+int get_serial_fd(const char * full_path)
 {
+	int fd = open(full_path, O_RDWR | O_NOCTTY);
+	if (fd < 0) {
+		fprintf(stderr, "[EE] Can't open '%s': %s\n", full_path, strerror(errno));
+		return -1;
+	}
+
 	struct termios tty;
 	memset(&tty, 0, sizeof (tty));
 
-	if (0 > tcgetattr(fd, &tty)) {
+	if (tcgetattr(fd, &tty) < 0) {
 		fprintf(stderr, "[EE] tcgetattr(): %s\n", strerror(errno));
 		return -1;
 	}
@@ -351,7 +371,18 @@ int configure_fd(int fd)
 		return -1;
 	}
 
-	return 0;
+	return fd;
+}
+
+
+
+
+void close_serial_fd(void)
+{
+	if (0 != g_serial_fd) {
+		close(g_serial_fd);
+		g_serial_fd = 0;
+	}
 }
 
 

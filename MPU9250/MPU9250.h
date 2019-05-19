@@ -74,7 +74,7 @@ typedef struct {
 	uint8_t new_mag_data_ready;
 
 	uint8_t checksum;
-} __attribute__((packed)) data_t;
+} __attribute__((packed)) imu_dataset_t;
 
 
 
